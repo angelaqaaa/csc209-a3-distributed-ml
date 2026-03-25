@@ -1,0 +1,6 @@
+*.o
+server
+worker
+gen_data
+shard_*.csv
+.DS_Store
