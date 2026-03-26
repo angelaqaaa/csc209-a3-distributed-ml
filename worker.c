@@ -1,5 +1,3 @@
-/* Partner 2 drafts skeleton; both partners add their functions */
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -13,8 +11,63 @@
 #include "data.h"
 
 /* ========== CONNECTION + REGISTRATION (Partner 2) ========== */
-/* TODO: send_register() */
-/* TODO: receive_weights() */
+
+/*
+ * Construct and send a MSG_REGISTER message to the server. The payload
+ * specifies the number of local training samples this worker holds.
+ * Returns 0 on success, -1 on error.
+ */
+int send_register(int fd, int num_samples) {
+    uint8_t header[HEADER_SIZE];
+    header[0] = MSG_REGISTER;
+    uint32_t payload = (uint32_t)sizeof(uint32_t);
+    uint32_t payload_net = htonl(payload);
+    memcpy(header + 1, &payload_net, sizeof(uint32_t));
+
+    uint32_t samples_net = htonl((uint32_t)num_samples);
+
+    if (write_all(fd, header, HEADER_SIZE) < 0) return -1;
+    if (write_all(fd, &samples_net, sizeof(samples_net)) < 0) return -1;
+    return 0;
+}
+
+/*
+ * Blocking helper used by the worker to read a MSG_WEIGHTS message
+ * from the server. On success fills weights_out with up to
+ * max_features floats and returns the number of floats received.
+ * Returns -1 on error or unexpected message type.
+ */
+int receive_weights(int fd, float *weights_out, int max_features) {
+    uint8_t header[HEADER_SIZE];
+    if (read_all(fd, header, HEADER_SIZE) < 0) return -1;
+    uint8_t type = header[0];
+    uint32_t payload_net;
+    memcpy(&payload_net, header + 1, sizeof(uint32_t));
+    uint32_t payload = ntohl(payload_net);
+    if (type != MSG_WEIGHTS) {
+        fprintf(stderr, "expected MSG_WEIGHTS, got type=%u\n", type);
+        /* drain payload if any */
+        if (payload > 0) {
+            char tmp[256];
+            uint32_t left = payload;
+            while (left > 0) {
+                uint32_t toread = left > sizeof(tmp) ? sizeof(tmp) : left;
+                if (read_all(fd, tmp, toread) < 0) return -1;
+                left -= toread;
+            }
+        }
+        return -1;
+    }
+
+    if (payload > (uint32_t)(max_features * sizeof(float))) {
+        fprintf(stderr, "weights payload too large (%u)\n", payload);
+        return -1;
+    }
+
+    if (read_all(fd, weights_out, (size_t)payload) < 0) return -1;
+    return (int)(payload / sizeof(float));
+}
+
 
 /* ========== GRADIENT + DONE (Partner 1) ========== */
 
@@ -97,4 +150,44 @@ int handle_done(int fd, float *weights, int num_features) {
     return 1;
 }
 
-/* TODO: main() — connect, register, training loop, clean exit */
+
+/* ========== Partner 2 implementation ========== */
+int main(int argc, char **argv) {
+    if (argc < 2) {
+        fprintf(stderr, "usage: %s <server-host> [num_samples]\n", argv[0]);
+        return 1;
+    }
+
+    const char *host = argv[1];
+    int num_samples = 10;
+    if (argc >= 3) num_samples = atoi(argv[2]);
+
+    int fd = connect_to_server(host, PORT);
+    if (fd < 0) return 1;
+
+    fprintf(stderr, "connected to server %s:%d (fd=%d)\n", host, PORT, fd);
+
+    if (send_register(fd, num_samples) < 0) {
+        fprintf(stderr, "failed to send register\n");
+        close(fd);
+        return 1;
+    }
+
+    fprintf(stderr, "sent register (samples=%d), waiting for weights...\n", num_samples);
+
+    float weights[MAX_FEATURES];
+    int nfeatures = receive_weights(fd, weights, MAX_FEATURES);
+    if (nfeatures < 0) {
+        fprintf(stderr, "failed to receive weights\n");
+        close(fd);
+        return 1;
+    }
+
+    fprintf(stderr, "received %d weights from server:\n", nfeatures);
+    for (int i = 0; i < nfeatures; ++i) {
+        fprintf(stderr, " w[%d]=%f\n", i, weights[i]);
+    }
+
+    close(fd);
+    return 0;
+}

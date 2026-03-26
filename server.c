@@ -1,11 +1,10 @@
-/* Partner 2 drafts skeleton; both partners add their functions */
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 #include <signal.h>
 #include <arpa/inet.h>
+#include <errno.h>
 #include <sys/select.h>
 #include "protocol.h"
 #include "net_utils.h"
@@ -13,9 +12,71 @@
 #include "model.h"
 
 /* ========== CONNECTION MANAGEMENT (Partner 2) ========== */
-/* TODO: add_worker() */
-/* TODO: handle_register() */
-/* TODO: broadcast_weights() */
+static struct worker_info workers[MAX_WORKERS];
+static float global_weights[MAX_FEATURES];
+
+/*
+ * Find an empty slot in the server's worker table and initialize it for
+ * a newly accepted client connection. Returns the worker index on
+ * success or -1 if no free slot is available.
+ */
+int add_worker(int fd) {
+    for (int i = 0; i < MAX_WORKERS; ++i) {
+        if (workers[i].fd == -1) {
+            workers[i].fd = fd;
+            workers[i].state = 0;
+            workers[i].num_samples = 0;
+            workers[i].recv_len = 0;
+            workers[i].gradient_received = 0;
+            workers[i].local_loss = 0.0f;
+            memset(workers[i].gradients, 0, sizeof(workers[i].gradients));
+            return i;
+        }
+    }
+    return -1;
+}
+
+
+/*
+ * Serialize and send the current global weight vector to the worker at
+ * index 'idx'. Payload is num_features floats. Returns 0
+ * on success or -1 on error.
+ */
+int send_weights_to_worker(int idx, int num_features) {
+    if (idx < 0 || idx >= MAX_WORKERS) return -1;
+    struct worker_info *w = &workers[idx];
+    if (w->fd == -1) return -1;
+
+    uint8_t header[HEADER_SIZE];
+    header[0] = MSG_WEIGHTS;
+    uint32_t payload = (uint32_t)(num_features * sizeof(float));
+    uint32_t payload_net = htonl(payload);
+    memcpy(header + 1, &payload_net, sizeof(uint32_t));
+
+    if (write_all(w->fd, header, HEADER_SIZE) < 0) return -1;
+    if (write_all(w->fd, global_weights, payload) < 0) return -1;
+
+    w->state = 2; /* sent_weights */
+    return 0;
+}
+
+/*
+ * Send the current weights to all registered workers.
+ * Returns 0 on success, -1 if any send fails.
+ */
+
+int broadcast_weights(int num_features) {
+    for (int i = 0; i < MAX_WORKERS; ++i) {
+        if (workers[i].fd != -1 && workers[i].state >= 1) {
+            if (send_weights_to_worker(i, num_features) < 0) {
+                fprintf(stderr, "failed to send weights to worker %d\n", i);
+            }
+        }
+    }
+    return 0;
+}
+
+
 
 /* ========== TRAINING LOGIC (Partner 1) ========== */
 
@@ -171,7 +232,149 @@ int broadcast_done(struct worker_info *workers, float *weights,
     return result;
 }
 
-/* ========== SHARED (skeleton) ========== */
-/* TODO: dispatch_message() */
-/* TODO: handle_disconnect() */
-/* TODO: main() — select() loop following simpleselect.c pattern */
+/* ========== skeleton (Partner 2) ========== */
+
+/*
+ * Cleanly close and reset the worker slot at index idx. This frees the
+ * slot so a new connection may be assigned there.
+ */
+void handle_disconnect(int idx) {
+    if (idx < 0 || idx >= MAX_WORKERS) return;
+    if (workers[idx].fd != -1) close(workers[idx].fd);
+    workers[idx].fd = -1;
+    workers[idx].state = 0;
+    workers[idx].recv_len = 0;
+    workers[idx].gradient_received = 0;
+}
+
+
+/*
+ * Parse a single complete message from the worker's receive buffer and
+ * dispatch it to the appropriate handler.
+ * Supports MSG_REGISTER, MSG_GRADIENT, and MSG_DONE.
+ * After processing the message the function removes the processed bytes
+ * from the worker's buffer so subsequent messages remain.
+ */
+void dispatch_message(int idx, int num_features) {
+    struct worker_info *w = &workers[idx];
+    if (!w || w->recv_len < HEADER_SIZE) return;
+
+    uint8_t type = (uint8_t)w->recv_buf[0];
+    uint32_t payload_net;
+    memcpy(&payload_net, w->recv_buf + 1, sizeof(uint32_t));
+    uint32_t payload = ntohl(payload_net);
+
+    if (w->recv_len < (int)(HEADER_SIZE + payload)) return; /* incomplete */
+
+    char *p = w->recv_buf + HEADER_SIZE;
+
+    if (type == MSG_REGISTER) {
+        if (payload < sizeof(uint32_t)) {
+            fprintf(stderr, "bad register payload size %u\n", payload);
+        } else {
+            uint32_t ns_net;
+            memcpy(&ns_net, p, sizeof(uint32_t));
+            uint32_t ns = ntohl(ns_net);
+            w->num_samples = (int)ns;
+            w->state = 1; /* registered */
+            fprintf(stderr, "worker %d registered (samples=%d)\n", idx, w->num_samples);
+            /* send weights immediately */
+            if (send_weights_to_worker(idx, num_features) < 0) {
+                fprintf(stderr, "failed to send initial weights to worker %d\n", idx);
+            }
+        }
+    } else if (type == MSG_GRADIENT) {
+        /* Delegate to existing handler that expects gradients located at HEADER_SIZE */
+        handle_gradient(w, 0);
+    } else if (type == MSG_DONE) {
+        fprintf(stderr, "worker %d sent DONE\n", idx);
+    } else {
+        fprintf(stderr, "unknown message type %u from worker %d\n", type, idx);
+    }
+
+    /* remove processed message from buffer, shift remainder left */
+    int total_len = HEADER_SIZE + (int)payload;
+    if (w->recv_len > total_len) {
+        memmove(w->recv_buf, w->recv_buf + total_len, w->recv_len - total_len);
+    }
+    w->recv_len -= total_len;
+}
+
+
+
+int main(int argc, char **argv) {
+    (void)argc;
+    (void)argv;
+    int port = PORT;
+    int listen_fd;
+    int num_features = MAX_FEATURES; /* default; partner1 may use fewer */
+
+    /* initialize workers */
+    for (int i = 0; i < MAX_WORKERS; ++i) workers[i].fd = -1;
+
+    /* init weights to zero */
+    for (int i = 0; i < num_features; ++i) global_weights[i] = 0.0f;
+
+    listen_fd = set_up_server_socket(port);
+    if (listen_fd < 0) {
+        fprintf(stderr, "failed to set up server socket on port %d\n", port);
+        return 1;
+    }
+    fprintf(stderr, "server listening on port %d\n", port);
+
+    while (1) {
+        fd_set rfds;
+        int maxfd = listen_fd;
+        FD_ZERO(&rfds);
+        FD_SET(listen_fd, &rfds);
+
+        for (int i = 0; i < MAX_WORKERS; ++i) {
+            if (workers[i].fd != -1) {
+                FD_SET(workers[i].fd, &rfds);
+                if (workers[i].fd > maxfd) maxfd = workers[i].fd;
+            }
+        }
+
+        int rv = select(maxfd + 1, &rfds, NULL, NULL, NULL);
+        if (rv < 0) {
+            if (errno == EINTR) continue;
+            perror("select");
+            break;
+        }
+
+        if (FD_ISSET(listen_fd, &rfds)) {
+            int cli = accept_connection(listen_fd);
+            if (cli >= 0) {
+                int idx = add_worker(cli);
+                if (idx < 0) {
+                    fprintf(stderr, "no free worker slots; closing connection\n");
+                    close(cli);
+                } else {
+                    fprintf(stderr, "accepted connection fd=%d assigned idx=%d\n", cli, idx);
+                }
+            }
+        }
+
+        for (int i = 0; i < MAX_WORKERS; ++i) {
+            if (workers[i].fd != -1 && FD_ISSET(workers[i].fd, &rfds)) {
+                int r = accumulate_read(&workers[i]);
+                if (r < 0) {
+                    fprintf(stderr, "worker %d disconnected\n", i);
+                    handle_disconnect(i);
+                } else if (r == 1) {
+                    /* process all complete messages in buffer */
+                    while (workers[i].recv_len >= HEADER_SIZE) {
+                        uint32_t payload_net;
+                        memcpy(&payload_net, workers[i].recv_buf + 1, sizeof(uint32_t));
+                        uint32_t payload = ntohl(payload_net);
+                        if (workers[i].recv_len < (int)(HEADER_SIZE + payload)) break;
+                        dispatch_message(i, num_features);
+                    }
+                }
+            }
+        }
+    }
+
+    close(listen_fd);
+    return 0;
+}
