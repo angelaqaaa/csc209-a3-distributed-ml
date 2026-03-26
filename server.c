@@ -20,6 +20,20 @@
 /* ========== TRAINING LOGIC (Partner 1) ========== */
 
 /*
+ * Return the number of workers with fd != -1.
+ */
+int count_active_workers(struct worker_info *workers) {
+    int count = 0;
+    int i;
+    for (i = 0; i < MAX_WORKERS; i++) {
+        if (workers[i].fd != -1) {
+            count++;
+        }
+    }
+    return count;
+}
+
+/*
  * Deserialize MSG_GRADIENT from w->recv_buf.
  * Payload: round(u32) + num_features(u32) + local_loss(float) + gradients[n].
  * Validates round matches current_round; discards stale gradients.

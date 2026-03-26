@@ -19,6 +19,14 @@
 /* ========== GRADIENT + DONE (Partner 1) ========== */
 
 /*
+ * Ignore SIGPIPE so writes to a closed socket return EPIPE
+ * instead of killing the process. Called from main() at startup.
+ */
+void setup_worker_signals(void) {
+    signal(SIGPIPE, SIG_IGN);
+}
+
+/*
  * Serialize and send MSG_GRADIENT to the server.
  * Payload: round(u32) + num_features(u32) + loss(float) + gradients[n].
  * Returns 0 on success, -1 on error.
@@ -54,7 +62,11 @@ int send_gradient(int fd, int round, int num_features,
     memcpy(buf + offset, gradients, num_features * sizeof(float));
     offset += num_features * sizeof(float);
 
-    return write_all(fd, buf, offset);
+    if (write_all(fd, buf, offset) == -1) {
+        fprintf(stderr, "send_gradient: write failed\n");
+        return -1;
+    }
+    return 0;
 }
 
 /*
@@ -69,8 +81,8 @@ int handle_done(int fd, float *weights, int num_features) {
     int j;
 
     if (read_all(fd, payload, payload_size) == -1) {
-        perror("read MSG_DONE payload");
-        return 1;
+        fprintf(stderr, "handle_done: server disconnected\n");
+        return -1;
     }
 
     /* num_features from payload (for verification) */
