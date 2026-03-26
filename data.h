@@ -1,4 +1,4 @@
-/* Partner 2 drafts */
+/* Partner 2 implements */
 
 #ifndef DATA_H
 #define DATA_H
