@@ -1,9 +1,3 @@
-/* Partner 2 data generator
-
-   Usage: ./gen_data <num_features> <total_samples> <num_shards>
-   Generates simple linearly separable binary classification data and
-   writes shards: shard_0.csv, shard_1.csv, ...
-*/
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -11,6 +5,13 @@
 #include <time.h>
 #include <string.h>
 
+
+/*
+ * Simple data generator for testing. Produces `num_shards` CSV files
+ * with `total_samples` samples distributed roughly equally across shards.
+ * Each line is "f1,f2,...,fN,label" where label is 0 or 1 generated from a
+ * random linear function plus noise.
+ */
 int main(int argc, char **argv) {
     if (argc < 4) {
         fprintf(stderr, "usage: %s <num_features> <total_samples> <num_shards>\n", argv[0]);
@@ -41,7 +42,6 @@ int main(int argc, char **argv) {
     int base = total_samples / num_shards;
     int rem = total_samples % num_shards;
 
-    int sample_idx = 0;
     for (int s = 0; s < num_shards; ++s) {
         char fname[256];
         snprintf(fname, sizeof(fname), "shard_%d.csv", s);
@@ -70,7 +70,6 @@ int main(int argc, char **argv) {
             int label = score > 0.0f ? 1 : 0;
             fprintf(f, ",%d\n", label);
 
-            sample_idx++;
         }
 
         fclose(f);
@@ -80,13 +79,3 @@ int main(int argc, char **argv) {
     free(w);
     return 0;
 }
-
-/*
- * gen_data main
- * -------------
- * Simple data generator for testing. Produces `num_shards` CSV files
- * (shard_0.csv ... shard_{num_shards-1}.csv) with `total_samples`
- * samples distributed roughly equally across shards. Each line is
- * "f1,f2,...,fN,label" where label is 0 or 1 generated from a
- * random linear function plus noise.
- */

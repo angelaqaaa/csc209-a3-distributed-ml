@@ -10,9 +10,9 @@
  * sets *num_samples and *num_features. On error returns -1 and
  * ensures no memory is leaked.
  */
- 
+
 int load_data(const char *filename, float **X, float **y,
-			  int *num_samples, int *num_features) {
+	int *num_samples, int *num_features) {
 	if (!filename || !X || !y || !num_samples || !num_features) return -1;
 
 	FILE *f = fopen(filename, "r");
