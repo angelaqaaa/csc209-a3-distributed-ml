@@ -1,5 +1,3 @@
-/* Partner 2 drafts skeleton; both partners add their functions */
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -16,6 +14,9 @@
 /* TODO: add_worker() */
 /* TODO: handle_register() */
 /* TODO: broadcast_weights() */
+
+/* Forward declarations for training logic functions used by skeleton */
+int count_active_workers(struct worker_info *workers);
 
 /* ========== TRAINING LOGIC (Partner 1) ========== */
 
@@ -38,7 +39,7 @@ int count_active_workers(struct worker_info *workers) {
  * Payload: round(u32) + num_features(u32) + local_loss(float) + gradients[n].
  * Validates round matches current_round; discards stale gradients.
  */
-void handle_gradient(struct worker_info *w, int current_round) {
+int handle_gradient(struct worker_info *w, int current_round) {
     int offset = HEADER_SIZE;
     uint32_t net_val;
 
@@ -49,8 +50,15 @@ void handle_gradient(struct worker_info *w, int current_round) {
 
     /* num_features */
     memcpy(&net_val, w->recv_buf + offset, 4);
-    int num_features = (int)ntohl(net_val);
+    int nf = (int)ntohl(net_val);
     offset += 4;
+
+    /* Bounds check on num_features */
+    if (nf <= 0 || nf > MAX_FEATURES) {
+        fprintf(stderr, "handle_gradient: invalid num_features %d from worker fd %d\n",
+                nf, w->fd);
+        return -1;
+    }
 
     /* local_loss */
     float local_loss;
@@ -61,13 +69,14 @@ void handle_gradient(struct worker_info *w, int current_round) {
     if (round != current_round) {
         fprintf(stderr, "Stale gradient: got round %d, expected %d\n",
                 round, current_round);
-        return;
+        return -1;
     }
 
     /* Store gradients and loss */
-    memcpy(w->gradients, w->recv_buf + offset, num_features * sizeof(float));
+    memcpy(w->gradients, w->recv_buf + offset, nf * sizeof(float));
     w->local_loss = local_loss;
     w->gradient_received = 1;
+    return 0;
 }
 
 /*
@@ -76,6 +85,9 @@ void handle_gradient(struct worker_info *w, int current_round) {
  */
 int all_gradients_received(struct worker_info *workers) {
     int i;
+    if (count_active_workers(workers) == 0) {
+        return 0;
+    }
     for (i = 0; i < MAX_WORKERS; i++) {
         if (workers[i].fd != -1 && workers[i].state == 2) {
             if (workers[i].gradient_received != 1) {
@@ -133,8 +145,8 @@ void aggregate_and_update(float *weights, struct worker_info *workers,
 /*
  * Return 1 if training should stop (loss below threshold or max rounds).
  */
-int check_termination(float loss, int round) {
-    if (loss < LOSS_THRESHOLD || round >= MAX_ROUNDS) {
+int check_termination(float loss, int round, int max_rounds) {
+    if (loss < LOSS_THRESHOLD || round >= max_rounds) {
         return 1;
     }
     return 0;

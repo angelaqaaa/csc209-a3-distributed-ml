@@ -1,5 +1,3 @@
-/* Partner 2 drafts skeleton; both partners add their functions */
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -22,7 +20,7 @@
  * Ignore SIGPIPE so writes to a closed socket return EPIPE
  * instead of killing the process. Called from main() at startup.
  */
-void setup_worker_signals(void) {
+static void setup_worker_signals(void) {
     signal(SIGPIPE, SIG_IGN);
 }
 

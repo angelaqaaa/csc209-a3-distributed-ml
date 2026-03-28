@@ -25,4 +25,15 @@ int write_all(int fd, const void *buf, size_t nbytes);
  */
 int accumulate_read(struct worker_info *w);
 
+/*
+ * Writes a 5-byte header: 1 byte type + 4 bytes payload_len (network order).
+ * Returns 0 on success, -1 on failure.
+ */
+int send_header(int fd, uint8_t type, uint32_t payload_len);
+
+/*
+ * Parses a 5-byte header from buf into type and payload_len (host order).
+ */
+void read_header(const uint8_t *buf, uint8_t *type, uint32_t *payload_len);
+
 #endif

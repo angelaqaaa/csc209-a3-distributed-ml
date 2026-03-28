@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <unistd.h>
 #include <string.h>
+#include <stdint.h>
 #include <arpa/inet.h>
 #include "io_utils.h"
 
@@ -67,4 +68,26 @@ int accumulate_read(struct worker_info *w) {
         return 0;
     }
     return 1;
+}
+
+/*
+ * Writes a 5-byte header: 1 byte type + 4 bytes payload_len (network order).
+ * Returns 0 on success, -1 on failure.
+ */
+int send_header(int fd, uint8_t type, uint32_t payload_len) {
+    char buf[HEADER_SIZE];
+    buf[0] = (char)type;
+    uint32_t net_len = htonl(payload_len);
+    memcpy(buf + 1, &net_len, 4);
+    return write_all(fd, buf, HEADER_SIZE);
+}
+
+/*
+ * Parses a 5-byte header from buf into type and payload_len (host order).
+ */
+void read_header(const uint8_t *buf, uint8_t *type, uint32_t *payload_len) {
+    *type = buf[0];
+    uint32_t net_len;
+    memcpy(&net_len, buf + 1, 4);
+    *payload_len = ntohl(net_len);
 }
