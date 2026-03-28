@@ -11,7 +11,7 @@
 #include "io_utils.h"
 #include "model.h"
 
-/* Declarations for Partner 1 server functions */
+/* Declarations for server training-logic functions */
 int count_active_workers(struct worker_info *workers);
 int handle_gradient(struct worker_info *w, int current_round);
 int all_gradients_received(struct worker_info *workers);
@@ -492,7 +492,7 @@ static void test_broadcast_done_skips_non_state2(void) {
 int main(void) {
     signal(SIGPIPE, SIG_IGN);
 
-    printf("=== server (Partner 1) tests ===\n\n");
+    printf("=== server tests ===\n\n");
 
     test_count_active_none();
     test_count_active_all();

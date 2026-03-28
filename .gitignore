@@ -4,8 +4,8 @@ worker
 gen_data
 test_io_utils
 test_model
-test_server_p1
-test_worker_p1
+test_server
+test_worker
 shard_*.csv
 .DS_Store
 docs/

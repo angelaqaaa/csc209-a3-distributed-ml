@@ -10,7 +10,7 @@
 #include "protocol.h"
 #include "io_utils.h"
 
-/* Declarations for Partner 1 worker functions */
+/* Declarations for worker gradient/done functions */
 int send_gradient(int fd, int round, int num_features,
                   float *gradients, float loss);
 int handle_done(int fd, float *weights, int num_features);
@@ -269,7 +269,7 @@ static void test_gradient_round_trip(void) {
 int main(void) {
     signal(SIGPIPE, SIG_IGN);
 
-    printf("=== worker (Partner 1) tests ===\n\n");
+    printf("=== worker tests ===\n\n");
 
     test_send_gradient_basic();
     test_send_gradient_closed_fd();
