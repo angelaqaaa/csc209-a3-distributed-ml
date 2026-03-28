@@ -159,36 +159,27 @@ int check_termination(float loss, int round, int max_rounds) {
  */
 int broadcast_done(struct worker_info *workers, float *weights,
                    int num_features, float final_loss) {
-    char buf[HEADER_SIZE + 8 + MAX_FEATURES * sizeof(float)];
+    char payload[8 + MAX_FEATURES * sizeof(float)];
+    uint32_t payload_len = 8 + num_features * sizeof(float);
     int offset = 0;
     int i;
 
-    /* Header */
-    buf[offset] = MSG_DONE;
-    offset += 1;
-
-    uint32_t payload_size = htonl(8 + num_features * sizeof(float));
-    memcpy(buf + offset, &payload_size, 4);
-    offset += 4;
-
-    /* Payload: num_features */
+    /* Build payload once */
     uint32_t net_nf = htonl(num_features);
-    memcpy(buf + offset, &net_nf, 4);
+    memcpy(payload + offset, &net_nf, 4);
     offset += 4;
 
-    /* Payload: final_loss */
-    memcpy(buf + offset, &final_loss, sizeof(float));
+    memcpy(payload + offset, &final_loss, sizeof(float));
     offset += sizeof(float);
 
-    /* Payload: weights array */
-    memcpy(buf + offset, weights, num_features * sizeof(float));
-    offset += num_features * sizeof(float);
+    memcpy(payload + offset, weights, num_features * sizeof(float));
 
-    /* Send to all active workers */
+    /* Send header + payload to all active workers */
     int result = 0;
     for (i = 0; i < MAX_WORKERS; i++) {
         if (workers[i].fd != -1 && workers[i].state == 2) {
-            if (write_all(workers[i].fd, buf, offset) == -1) {
+            if (send_header(workers[i].fd, MSG_DONE, payload_len) == -1
+                    || write_all(workers[i].fd, payload, payload_len) == -1) {
                 fprintf(stderr, "Failed to send MSG_DONE to worker %d\n", i);
                 result = -1;
             }
