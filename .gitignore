@@ -2,8 +2,10 @@
 server
 worker
 gen_data
+test_io_utils
 test_model
-test_model.c
+test_server_p1
+test_worker_p1
 shard_*.csv
 .DS_Store
 docs/

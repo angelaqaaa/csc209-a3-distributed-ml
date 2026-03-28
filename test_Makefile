@@ -1,0 +1,44 @@
+FLAGS = -Wall -Wextra -g
+
+all: test_all
+
+io_utils.o: io_utils.c io_utils.h protocol.h
+	gcc ${FLAGS} -c io_utils.c
+
+model.o: model.c model.h
+	gcc ${FLAGS} -c model.c
+
+server_p1.o: server.c protocol.h io_utils.h model.h
+	gcc ${FLAGS} -c server.c -o server_p1.o
+
+test_io_utils: test_io_utils.c io_utils.o
+	gcc ${FLAGS} -o test_io_utils test_io_utils.c io_utils.o
+
+test_model: test_model.c model.o
+	gcc ${FLAGS} -o test_model test_model.c model.o -lm
+
+test_server_p1: test_server_p1.c server_p1.o io_utils.o model.o
+	gcc ${FLAGS} -o test_server_p1 test_server_p1.c server_p1.o io_utils.o model.o -lm
+
+worker_p1.o: worker.c protocol.h io_utils.h model.h
+	gcc ${FLAGS} -Wno-unused-function -c worker.c -o worker_p1.o
+
+test_worker_p1: test_worker_p1.c worker_p1.o server_p1.o io_utils.o model.o
+	gcc ${FLAGS} -o test_worker_p1 test_worker_p1.c worker_p1.o server_p1.o io_utils.o model.o -lm
+
+test_all: test_io_utils test_model test_server_p1 test_worker_p1
+	@echo "=== Running all tests ==="
+	@echo ""
+	@./test_io_utils
+	@echo ""
+	@./test_model
+	@echo ""
+	@./test_server_p1
+	@echo ""
+	@./test_worker_p1
+	@echo ""
+	@echo "=== All test suites complete ==="
+
+clean:
+	rm -f test_io_utils test_model test_server_p1 test_worker_p1
+	rm -f io_utils.o model.o server_p1.o worker_p1.o
