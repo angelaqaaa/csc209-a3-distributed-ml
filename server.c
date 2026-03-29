@@ -284,7 +284,7 @@ void handle_disconnect(int idx) {
  */
 void dispatch_message(int idx, int *num_features, int current_round) {
     struct worker_info *w = &workers[idx];
-    if (!w || w->recv_len < HEADER_SIZE) return;
+    if (w->recv_len < HEADER_SIZE) return;
 
     uint8_t type = (uint8_t)w->recv_buf[0];
     uint32_t payload_net;
