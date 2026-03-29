@@ -357,8 +357,7 @@ int main(int argc, char **argv) {
     /* initialize workers */
     for (int i = 0; i < MAX_WORKERS; ++i) workers[i].fd = -1;
 
-    /* init weights to zero */
-    for (int i = 0; i < num_features; ++i) global_weights[i] = 0.0f;
+    init_weights(global_weights, num_features);
 
     listen_fd = set_up_server_socket(port);
     if (listen_fd < 0) {
