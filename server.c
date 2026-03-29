@@ -358,12 +358,19 @@ void dispatch_message(int idx, int *num_features) {
 int main(int argc, char **argv) {
     (void)argc;
     (void)argv;
+
     int port = PORT;
     int listen_fd;
     int num_features = MAX_FEATURES; /* default; partner1 may use fewer */
 
+    fd_set allset;
+    fd_set rset;
+    int maxfd;
+
     /* initialize workers */
-    for (int i = 0; i < MAX_WORKERS; ++i) workers[i].fd = -1;
+    for (int i = 0; i < MAX_WORKERS; ++i) {
+        workers[i].fd = -1;
+    }
 
     /* init weights to zero */
     init_weights(global_weights, num_features);
@@ -377,27 +384,30 @@ int main(int argc, char **argv) {
     }
     fprintf(stderr, "server listening on port %d\n", port);
 
+    FD_ZERO(&allset);
+    FD_SET(listen_fd, &allset);
+    maxfd = listen_fd;
+
     while (1) {
-        fd_set rfds;
-        int maxfd = listen_fd;
-        FD_ZERO(&rfds);
-        FD_SET(listen_fd, &rfds);
+        rset = allset;
 
-        for (int i = 0; i < MAX_WORKERS; ++i) {
-            if (workers[i].fd != -1) {
-                FD_SET(workers[i].fd, &rfds);
-                if (workers[i].fd > maxfd) maxfd = workers[i].fd;
-            }
-        }
+        struct timeval tv;
+        tv.tv_sec = 10;
+        tv.tv_usec = 0;
 
-        int rv = select(maxfd + 1, &rfds, NULL, NULL, NULL);
+        int rv = select(maxfd + 1, &rset, NULL, NULL, &tv);
         if (rv < 0) {
             if (errno == EINTR) continue;
             perror("select");
             break;
         }
 
-        if (FD_ISSET(listen_fd, &rfds)) {
+        if (rv == 0) {
+            fprintf(stderr, "No activity in %ld seconds\n", (long)tv.tv_sec);
+            continue;
+        }
+
+        if (FD_ISSET(listen_fd, &rset)) {
             int cli = accept_connection(listen_fd);
             if (cli >= 0) {
                 int idx = add_worker(cli);
@@ -405,24 +415,44 @@ int main(int argc, char **argv) {
                     fprintf(stderr, "no free worker slots; closing connection\n");
                     close(cli);
                 } else {
+                    FD_SET(cli, &allset);
+                    if (cli > maxfd) maxfd = cli;
                     fprintf(stderr, "accepted connection fd=%d assigned idx=%d\n", cli, idx);
                 }
             }
         }
 
         for (int i = 0; i < MAX_WORKERS; ++i) {
-            if (workers[i].fd != -1 && FD_ISSET(workers[i].fd, &rfds)) {
+            if (workers[i].fd != -1 && FD_ISSET(workers[i].fd, &rset)) {
                 int r = accumulate_read(&workers[i]);
                 if (r < 0) {
+                    int tmp_fd = workers[i].fd;
+
                     fprintf(stderr, "worker %d disconnected\n", i);
                     handle_disconnect(i);
+
+                    FD_CLR(tmp_fd, &allset);
+
+                    if (tmp_fd == maxfd) {
+                        int new_maxfd = listen_fd;
+                        for (int j = 0; j < MAX_WORKERS; ++j) {
+                            if (workers[j].fd != -1 && workers[j].fd > new_maxfd) {
+                                new_maxfd = workers[j].fd;
+                            }
+                        }
+                        maxfd = new_maxfd;
+                    }
                 } else if (r == 1) {
                     /* process all complete messages in buffer */
                     while (workers[i].recv_len >= HEADER_SIZE) {
                         uint32_t payload_net;
                         memcpy(&payload_net, workers[i].recv_buf + 1, sizeof(uint32_t));
                         uint32_t payload = ntohl(payload_net);
-                        if (workers[i].recv_len < (int)(HEADER_SIZE + payload)) break;
+
+                        if (workers[i].recv_len < (int)(HEADER_SIZE + payload)) {
+                            break;
+                        }
+
                         dispatch_message(i, &num_features);
                     }
                 }
