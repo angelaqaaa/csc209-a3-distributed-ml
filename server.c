@@ -14,8 +14,7 @@
 /* ========== CONNECTION MANAGEMENT (Partner 2) ========== */
 static struct worker_info workers[MAX_WORKERS];
 static float global_weights[MAX_FEATURES];
-
-/* forward declarations for functions used before their definitions */
+static int current_round = 0;
 void handle_disconnect(int idx);
 
 /*
@@ -42,44 +41,40 @@ int add_worker(int fd) {
 
 /*
  * Serialize and send the current global weight vector to the worker at
- * index 'idx'. Payload: round(u32) + num_features(u32) + float[n].
- * Returns 0 on success or -1 on error.
+ * index 'idx'. Payload is num_features floats. Returns 0
+ * on success or -1 on error.
  */
 int send_weights_to_worker(int idx, int round, int num_features) {
     if (idx < 0 || idx >= MAX_WORKERS) return -1;
+
     struct worker_info *w = &workers[idx];
     if (w->fd == -1) return -1;
 
-    uint32_t payload = (uint32_t)(8 + num_features * sizeof(float));
-    uint8_t header[HEADER_SIZE];
-    header[0] = MSG_WEIGHTS;
-    uint32_t payload_net = htonl(payload);
-    memcpy(header + 1, &payload_net, sizeof(uint32_t));
+    char buf[HEADER_SIZE + 8 + MAX_FEATURES * sizeof(float)];
+    int offset = 0;
 
-    /* build payload */
-    char *buf = malloc((size_t)payload);
-    if (!buf) return -1;
-    int off = 0;
+    buf[offset] = MSG_WEIGHTS;
+    offset += 1;
+
+    uint32_t payload_size = htonl(8 + num_features * (int)sizeof(float));
+    memcpy(buf + offset, &payload_size, 4);
+    offset += 4;
+
     uint32_t net_round = htonl((uint32_t)round);
-    memcpy(buf + off, &net_round, 4);
-    off += 4;
+    memcpy(buf + offset, &net_round, 4);
+    offset += 4;
+
     uint32_t net_nf = htonl((uint32_t)num_features);
-    memcpy(buf + off, &net_nf, 4);
-    off += 4;
-    memcpy(buf + off, global_weights, num_features * sizeof(float));
-    off += num_features * sizeof(float);
+    memcpy(buf + offset, &net_nf, 4);
+    offset += 4;
 
-    if (write_all(w->fd, header, HEADER_SIZE) < 0) {
-        free(buf);
-        return -1;
-    }
-    if (write_all(w->fd, buf, (size_t)payload) < 0) {
-        free(buf);
-        return -1;
-    }
+    memcpy(buf + offset, global_weights, num_features * sizeof(float));
+    offset += num_features * (int)sizeof(float);
 
-    free(buf);
-    w->state = 2; /* sent_weights */
+    if (write_all(w->fd, buf, (size_t)offset) < 0) return -1;
+
+    w->state = 2;
+    w->gradient_received = 0;
     return 0;
 }
 
@@ -89,18 +84,15 @@ int send_weights_to_worker(int idx, int round, int num_features) {
  */
 
 int broadcast_weights(int round, int num_features) {
-    int result = 0;
     for (int i = 0; i < MAX_WORKERS; ++i) {
         if (workers[i].fd != -1 && workers[i].state >= 1) {
             if (send_weights_to_worker(i, round, num_features) < 0) {
                 fprintf(stderr, "failed to send weights to worker %d\n", i);
-                /* treat write failure as disconnect */
                 handle_disconnect(i);
-                result = -1;
             }
         }
     }
-    return result;
+    return 0;
 }
 
 
@@ -293,6 +285,53 @@ void handle_disconnect(int idx) {
     workers[idx].gradient_received = 0;
 }
 
+void handle_register(int idx, int *num_features) {
+    struct worker_info *w = &workers[idx];
+    int offset = HEADER_SIZE;
+    uint32_t net_val;
+
+    memcpy(&net_val, w->recv_buf + offset, 4);
+    int worker_nf = (int)ntohl(net_val);
+    offset += 4;
+
+    memcpy(&net_val, w->recv_buf + offset, 4);
+    int worker_ns = (int)ntohl(net_val);
+    offset += 4;
+
+    if (worker_nf <= 0 || worker_nf > MAX_FEATURES) {
+        fprintf(stderr, "worker %d sent invalid num_features=%d\n", idx, worker_nf);
+        handle_disconnect(idx);
+        return;
+    }
+
+    if (*num_features == MAX_FEATURES) {
+        *num_features = worker_nf;
+        init_weights(global_weights, *num_features);
+    } else if (worker_nf != *num_features) {
+        fprintf(stderr, "worker %d has %d features but server expects %d; dropping\n",
+                idx, worker_nf, *num_features);
+        handle_disconnect(idx);
+        return;
+    }
+
+    if (worker_ns <= 0) {
+        fprintf(stderr, "worker %d sent invalid num_samples=%d\n", idx, worker_ns);
+        handle_disconnect(idx);
+        return;
+    }
+
+    w->num_samples = worker_ns;
+    w->state = 1;
+
+    fprintf(stderr, "worker %d registered (features=%d, samples=%d)\n",
+            idx, worker_nf, worker_ns);
+
+    if (send_weights_to_worker(idx, current_round, *num_features) < 0) {
+        fprintf(stderr, "failed to send initial weights to worker %d\n", idx);
+        handle_disconnect(idx);
+    }
+}
+
 
 /*
  * Parse a single complete message from the worker's receive buffer and
@@ -301,7 +340,7 @@ void handle_disconnect(int idx) {
  * After processing the message the function removes the processed bytes
  * from the worker's buffer so subsequent messages remain.
  */
-void dispatch_message(int idx, int *num_features, int current_round) {
+void dispatch_message(int idx, int *num_features) {
     struct worker_info *w = &workers[idx];
     if (w->recv_len < HEADER_SIZE) return;
 
@@ -310,37 +349,15 @@ void dispatch_message(int idx, int *num_features, int current_round) {
     memcpy(&payload_net, w->recv_buf + 1, sizeof(uint32_t));
     uint32_t payload = ntohl(payload_net);
 
-    if (w->recv_len < (int)(HEADER_SIZE + payload)) return; /* incomplete */
-
-    char *p = w->recv_buf + HEADER_SIZE;
+    if (w->recv_len < (int)(HEADER_SIZE + payload)) return;
 
     if (type == MSG_REGISTER) {
-        if (payload < 8) {
+        if (payload != 8) {
             fprintf(stderr, "bad register payload size %u\n", payload);
         } else {
-            uint32_t nf_net;
-            memcpy(&nf_net, p, 4);
-            uint32_t nf = ntohl(nf_net);
-            p += 4;
-            uint32_t ns_net;
-            memcpy(&ns_net, p, 4);
-            uint32_t ns = ntohl(ns_net);
-            w->num_samples = (int)ns;
-            w->state = 1; /* registered; will become 2 when weights are sent */
-            fprintf(stderr, "worker %d registered (samples=%d, num_features=%u)\n", idx, w->num_samples, nf);
-            /* adjust server's num_features if necessary */
-            if (nf > 0 && nf <= MAX_FEATURES) {
-                if (*num_features == MAX_FEATURES) {
-                    *num_features = (int)nf;
-                } else if (*num_features != (int)nf) {
-                    fprintf(stderr, "warning: worker %d num_features %u differs from server %d; using worker's value\n", idx, nf, *num_features);
-                    *num_features = (int)nf;
-                }
-            }
-            /* don't send weights here; server orchestration will broadcast when ready */
+            handle_register(idx, num_features);
         }
     } else if (type == MSG_GRADIENT) {
-        /* Delegate to existing handler that expects gradients located at HEADER_SIZE */
         handle_gradient(w, current_round);
     } else if (type == MSG_DONE) {
         fprintf(stderr, "worker %d sent DONE\n", idx);
@@ -348,7 +365,6 @@ void dispatch_message(int idx, int *num_features, int current_round) {
         fprintf(stderr, "unknown message type %u from worker %d\n", type, idx);
     }
 
-    /* remove processed message from buffer, shift remainder left */
     int total_len = HEADER_SIZE + (int)payload;
     if (w->recv_len > total_len) {
         memmove(w->recv_buf, w->recv_buf + total_len, w->recv_len - total_len);
@@ -359,24 +375,26 @@ void dispatch_message(int idx, int *num_features, int current_round) {
 
 
 int main(int argc, char **argv) {
+    (void)argc;
+    (void)argv;
+
     int port = PORT;
     int listen_fd;
     int num_features = MAX_FEATURES; /* default; partner1 may use fewer */
-    int current_round = 0;
-    int expected_workers = 1; /* default: 1 */
-    int weights_broadcast = 0; /* whether we've broadcast for the current_round */
 
-    if (argc >= 2) {
-        expected_workers = atoi(argv[1]);
-        if (expected_workers <= 0) expected_workers = 1;
-    }
-
-    fprintf(stderr, "server starting: PORT=%d expected_workers=%d\n", port, expected_workers);
+    fd_set allset;
+    fd_set rset;
+    int maxfd;
 
     /* initialize workers */
-    for (int i = 0; i < MAX_WORKERS; ++i) workers[i].fd = -1;
+    for (int i = 0; i < MAX_WORKERS; ++i) {
+        workers[i].fd = -1;
+    }
 
+    /* init weights to zero */
     init_weights(global_weights, num_features);
+
+    signal(SIGPIPE, SIG_IGN);
 
     listen_fd = set_up_server_socket(port);
     if (listen_fd < 0) {
@@ -385,30 +403,30 @@ int main(int argc, char **argv) {
     }
     fprintf(stderr, "server listening on port %d\n", port);
 
-    /* ignore SIGPIPE so write failures return EPIPE instead of crashing */
-    signal(SIGPIPE, SIG_IGN);
+    FD_ZERO(&allset);
+    FD_SET(listen_fd, &allset);
+    maxfd = listen_fd;
 
     while (1) {
-        fd_set rfds;
-        int maxfd = listen_fd;
-        FD_ZERO(&rfds);
-        FD_SET(listen_fd, &rfds);
+        rset = allset;
 
-        for (int i = 0; i < MAX_WORKERS; ++i) {
-            if (workers[i].fd != -1) {
-                FD_SET(workers[i].fd, &rfds);
-                if (workers[i].fd > maxfd) maxfd = workers[i].fd;
-            }
-        }
+        struct timeval tv;
+        tv.tv_sec = 10;
+        tv.tv_usec = 0;
 
-        int rv = select(maxfd + 1, &rfds, NULL, NULL, NULL);
+        int rv = select(maxfd + 1, &rset, NULL, NULL, &tv);
         if (rv < 0) {
             if (errno == EINTR) continue;
             perror("select");
             break;
         }
 
-        if (FD_ISSET(listen_fd, &rfds)) {
+        if (rv == 0) {
+            fprintf(stderr, "No activity in %ld seconds\n", (long)tv.tv_sec);
+            continue;
+        }
+
+        if (FD_ISSET(listen_fd, &rset)) {
             int cli = accept_connection(listen_fd);
             if (cli >= 0) {
                 int idx = add_worker(cli);
@@ -416,67 +434,47 @@ int main(int argc, char **argv) {
                     fprintf(stderr, "no free worker slots; closing connection\n");
                     close(cli);
                 } else {
+                    FD_SET(cli, &allset);
+                    if (cli > maxfd) maxfd = cli;
                     fprintf(stderr, "accepted connection fd=%d assigned idx=%d\n", cli, idx);
                 }
             }
         }
 
         for (int i = 0; i < MAX_WORKERS; ++i) {
-            if (workers[i].fd != -1 && FD_ISSET(workers[i].fd, &rfds)) {
+            if (workers[i].fd != -1 && FD_ISSET(workers[i].fd, &rset)) {
                 int r = accumulate_read(&workers[i]);
                 if (r < 0) {
+                    int tmp_fd = workers[i].fd;
+
                     fprintf(stderr, "worker %d disconnected\n", i);
                     handle_disconnect(i);
+
+                    FD_CLR(tmp_fd, &allset);
+
+                    if (tmp_fd == maxfd) {
+                        int new_maxfd = listen_fd;
+                        for (int j = 0; j < MAX_WORKERS; ++j) {
+                            if (workers[j].fd != -1 && workers[j].fd > new_maxfd) {
+                                new_maxfd = workers[j].fd;
+                            }
+                        }
+                        maxfd = new_maxfd;
+                    }
                 } else if (r == 1) {
                     /* process all complete messages in buffer */
                     while (workers[i].recv_len >= HEADER_SIZE) {
                         uint32_t payload_net;
                         memcpy(&payload_net, workers[i].recv_buf + 1, sizeof(uint32_t));
                         uint32_t payload = ntohl(payload_net);
-                        if (workers[i].recv_len < (int)(HEADER_SIZE + payload)) break;
-                        dispatch_message(i, &num_features, current_round);
+
+                        if (workers[i].recv_len < (int)(HEADER_SIZE + payload)) {
+                            break;
+                        }
+
+                        dispatch_message(i, &num_features);
                     }
                 }
-            }
-        }
-
-        /* After processing incoming messages, check orchestration state */
-        /* Count registered workers (state >=1) */
-        int registered_count = 0;
-        for (int i = 0; i < MAX_WORKERS; ++i) {
-            if (workers[i].fd != -1 && workers[i].state >= 1) registered_count++;
-        }
-
-        /* If we have reached expected workers and haven't broadcast weights yet, do it */
-        if (!weights_broadcast && registered_count >= expected_workers) {
-            if (broadcast_weights(current_round, num_features) < 0) {
-                fprintf(stderr, "broadcast initial weights failed\n");
-            } else {
-                weights_broadcast = 1;
-                fprintf(stderr, "broadcasted initial weights for round %d\n", current_round);
-            }
-        }
-
-        /* If weights already broadcasted for current_round, check for gradients */
-        if (weights_broadcast) {
-            if (all_gradients_received(workers)) {
-                float global_loss = 0.0f;
-                aggregate_and_update(global_weights, workers, num_features, 0.1f, &global_loss);
-                fprintf(stderr, "aggregated gradients; global_loss=%.6f\n", global_loss);
-                if (check_termination(global_loss, current_round)) {
-                    broadcast_done(workers, global_weights, num_features, global_loss);
-                    fprintf(stderr, "training complete; broadcasting DONE\n");
-                    break;
-                }
-                /* next round */
-                current_round++;
-                /* broadcast new weights for next round */
-                if (broadcast_weights(current_round, num_features) < 0) {
-                    fprintf(stderr, "broadcast weights for round %d failed\n", current_round);
-                } else {
-                    fprintf(stderr, "broadcasted weights for round %d\n", current_round);
-                }
-                /* continue; weights_broadcast remains true for next round */
             }
         }
     }

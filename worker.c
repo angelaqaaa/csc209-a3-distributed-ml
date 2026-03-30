@@ -18,19 +18,25 @@
  * Returns 0 on success, -1 on error.
  */
 int send_register(int fd, int num_features, int num_samples) {
-    uint8_t header[HEADER_SIZE];
-    header[0] = MSG_REGISTER;
-    uint32_t payload = (uint32_t)(8); /* num_features + num_samples */
-    uint32_t payload_net = htonl(payload);
-    memcpy(header + 1, &payload_net, sizeof(uint32_t));
+    char buf[HEADER_SIZE + 8];
+    int offset = 0;
 
-    uint32_t nf_net = htonl((uint32_t)num_features);
-    uint32_t samples_net = htonl((uint32_t)num_samples);
+    buf[offset] = MSG_REGISTER;
+    offset += 1;
 
-    if (write_all(fd, header, HEADER_SIZE) < 0) return -1;
-    if (write_all(fd, &nf_net, sizeof(nf_net)) < 0) return -1;
-    if (write_all(fd, &samples_net, sizeof(samples_net)) < 0) return -1;
-    return 0;
+    uint32_t payload_size = htonl(8);
+    memcpy(buf + offset, &payload_size, 4);
+    offset += 4;
+
+    uint32_t net_nf = htonl((uint32_t)num_features);
+    memcpy(buf + offset, &net_nf, 4);
+    offset += 4;
+
+    uint32_t net_ns = htonl((uint32_t)num_samples);
+    memcpy(buf + offset, &net_ns, 4);
+    offset += 4;
+
+    return write_all(fd, buf, (size_t)offset);
 }
 
 /*
@@ -39,21 +45,24 @@ int send_register(int fd, int num_features, int num_samples) {
  * max_features floats and returns the number of floats received.
  * Returns -1 on error or unexpected message type.
  */
-int receive_weights(int fd, float *weights_out, int max_features) {
+int receive_weights(int fd, float *weights_out, int *round_out,
+                    int num_features, int max_features) {
     uint8_t header[HEADER_SIZE];
     if (read_all(fd, header, HEADER_SIZE) < 0) return -1;
+
     uint8_t type = header[0];
     uint32_t payload_net;
     memcpy(&payload_net, header + 1, sizeof(uint32_t));
     uint32_t payload = ntohl(payload_net);
+
     if (type != MSG_WEIGHTS) {
         fprintf(stderr, "expected MSG_WEIGHTS, got type=%u\n", type);
-        /* drain payload if any */
+
         if (payload > 0) {
             char tmp[256];
             uint32_t left = payload;
             while (left > 0) {
-                uint32_t toread = left > sizeof(tmp) ? sizeof(tmp) : left;
+                uint32_t toread = left > sizeof(tmp) ? (uint32_t)sizeof(tmp) : left;
                 if (read_all(fd, tmp, toread) < 0) return -1;
                 left -= toread;
             }
@@ -61,39 +70,39 @@ int receive_weights(int fd, float *weights_out, int max_features) {
         return -1;
     }
 
-    if (payload < 8) {
-        fprintf(stderr, "weights payload too small (%u)\n", payload);
+    if (payload < 8 || payload > (uint32_t)(8 + max_features * (int)sizeof(float))) {
+        fprintf(stderr, "bad weights payload size %u\n", payload);
         return -1;
     }
 
-    /* Read full payload into temp buffer */
-    char *buf = malloc((size_t)payload);
-    if (!buf) return -1;
-    if (read_all(fd, buf, (size_t)payload) < 0) {
-        free(buf);
-        return -1;
-    }
+    char buf[8 + MAX_FEATURES * sizeof(float)];
+    if (read_all(fd, buf, (size_t)payload) < 0) return -1;
 
-    int off = 0;
+    int offset = 0;
     uint32_t net_round;
-    memcpy(&net_round, buf + off, 4);
-    off += 4;
-    (void)ntohl(net_round); /* round currently unused by worker */
-
     uint32_t net_nf;
-    memcpy(&net_nf, buf + off, 4);
-    off += 4;
-    uint32_t nf = ntohl(net_nf);
 
-    if (nf > (uint32_t)max_features) {
-        fprintf(stderr, "weights indicate %u features but max is %d\n", nf, max_features);
-        free(buf);
+    memcpy(&net_round, buf + offset, 4);
+    *round_out = (int)ntohl(net_round);
+    offset += 4;
+
+    memcpy(&net_nf, buf + offset, 4);
+    int nf = (int)ntohl(net_nf);
+    offset += 4;
+
+    if (nf < 0 || nf > max_features) {
+        fprintf(stderr, "server sent invalid num_features=%d\n", nf);
         return -1;
     }
 
-    memcpy(weights_out, buf + off, nf * sizeof(float));
-    free(buf);
-    return (int)nf;
+    if (nf > num_features) {
+        fprintf(stderr, "server sent %d features but shard has %d; using shard's value\n",
+                nf, num_features);
+        nf = num_features;
+    }
+
+    memcpy(weights_out, buf + offset, (size_t)nf * sizeof(float));
+    return nf;
 }
 
 
@@ -187,106 +196,71 @@ int handle_done(int fd, float *weights, int num_features) {
 
 /* ========== Partner 2 implementation ========== */
 int main(int argc, char **argv) {
-    if (argc < 3) {
-        fprintf(stderr, "usage: %s <server-host> <shard_file>\n", argv[0]);
+    if (argc != 4) {
+        fprintf(stderr, "usage: %s <hostname> <port> <shard_file>\n", argv[0]);
         return 1;
     }
 
     const char *host = argv[1];
-    const char *shard_file = argv[2];
+    int port = atoi(argv[2]);
+    const char *shard_file = argv[3];
 
-    /* load local shard */
-    float *X = NULL, *y = NULL;
-    int num_samples = 0, num_features = 0;
+    if (port <= 0) {
+        fprintf(stderr, "invalid port: %s\n", argv[2]);
+        return 1;
+    }
+
+    float *X = NULL;
+    float *y = NULL;
+    int num_samples = 0;
+    int num_features = 0;
+
+    signal(SIGPIPE, SIG_IGN);
+
     if (load_data(shard_file, &X, &y, &num_samples, &num_features) < 0) {
         fprintf(stderr, "failed to load shard %s\n", shard_file);
         return 1;
     }
 
-    int fd = connect_to_server(host, PORT);
+    int fd = connect_to_server(host, port);
     if (fd < 0) {
-        free(X); free(y);
+        free(X);
+        free(y);
         return 1;
     }
 
-    fprintf(stderr, "connected to server %s:%d (fd=%d)\n", host, PORT, fd);
+    fprintf(stderr, "connected to server %s:%d (fd=%d)\n", host, port, fd);
 
     if (send_register(fd, num_features, num_samples) < 0) {
         fprintf(stderr, "failed to send register\n");
         close(fd);
-        free(X); free(y);
+        free(X);
+        free(y);
         return 1;
     }
 
-    fprintf(stderr, "sent register (samples=%d, num_features=%d), waiting...\n", num_samples, num_features);
+    fprintf(stderr, "sent register (features=%d, samples=%d), waiting for weights...\n",
+            num_features, num_samples);
 
-    /* message loop: handle MSG_WEIGHTS, compute gradient, send MSG_GRADIENT; handle MSG_DONE and exit */
-    float *weights = malloc((size_t)MAX_FEATURES * sizeof(float));
-    float *grad = malloc((size_t)MAX_FEATURES * sizeof(float));
-    if (!weights || !grad) {
-        fprintf(stderr, "allocation failure\n");
-        close(fd); free(X); free(y); free(weights); free(grad);
+    float weights[MAX_FEATURES];
+    int round = 0;
+    int nfeatures = receive_weights(fd, weights, &round, num_features, MAX_FEATURES);
+    if (nfeatures < 0) {
+        fprintf(stderr, "failed to receive weights\n");
+        close(fd);
+        free(X);
+        free(y);
         return 1;
     }
 
-    while (1) {
-        uint8_t header[HEADER_SIZE];
-        if (read_all(fd, header, HEADER_SIZE) < 0) {
-            fprintf(stderr, "connection closed while waiting for header\n");
-            break;
-        }
-        uint8_t type = header[0];
-        uint32_t payload_net;
-        memcpy(&payload_net, header + 1, sizeof(uint32_t));
-        uint32_t payload = ntohl(payload_net);
-
-        if (type == MSG_WEIGHTS) {
-            if (payload < 8) {
-                fprintf(stderr, "bad weights payload size %u\n", payload);
-                /* drain if any */
-                if (payload > 0) { char tmp[128]; read_all(fd, tmp, payload); }
-                continue;
-            }
-            char *buf = malloc((size_t)payload);
-            if (!buf) break;
-            if (read_all(fd, buf, payload) < 0) { free(buf); break; }
-            int off = 0;
-            uint32_t net_round;
-            memcpy(&net_round, buf + off, 4); off += 4;
-            int round = (int)ntohl(net_round);
-            uint32_t net_nf; memcpy(&net_nf, buf + off, 4); off += 4;
-            int nf = (int)ntohl(net_nf);
-            if (nf > num_features) {
-                fprintf(stderr, "server sent %d features but shard has %d; using shard's value\n", nf, num_features);
-                /* we still read only up to num_features */
-            }
-            memcpy(weights, buf + off, (size_t)nf * sizeof(float));
-            free(buf);
-
-            fprintf(stderr, "received weights for round %d (n=%d)\n", round, nf);
-
-            /* compute local gradient using model helper */
-            float loss = compute_gradient(X, y, num_samples, num_features, weights, grad);
-            if (send_gradient(fd, round, num_features, grad, loss) < 0) {
-                fprintf(stderr, "failed to send gradient\n");
-                break;
-            }
-            fprintf(stderr, "sent gradient for round %d (loss=%.6f)\n", round, loss);
-
-        } else if (type == MSG_DONE) {
-            /* server will send the rest of payload for MSG_DONE; handle_done reads payload and prints */
-            handle_done(fd, weights, num_features);
-            break;
-        } else {
-            /* unknown message type: drain payload */
-            if (payload > 0) {
-                char *tmp = malloc(payload);
-                if (tmp) { read_all(fd, tmp, payload); free(tmp); }
-            }
-        }
+    fprintf(stderr, "received round %d weights from server (%d features):\n",
+            round, nfeatures);
+    for (int i = 0; i < nfeatures; ++i) {
+        fprintf(stderr, " w[%d]=%f\n", i, weights[i]);
     }
 
     close(fd);
-    free(X); free(y); free(weights); free(grad);
+    free(X);
+    free(y);
     return 0;
 }
