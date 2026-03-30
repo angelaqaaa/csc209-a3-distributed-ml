@@ -1,7 +1,7 @@
 PORT = 4242
 FLAGS = -Wall -Wextra -g -DPORT=$(PORT)
 
-all: server worker
+all: server worker gen_data
 
 server: server.o net_utils.o io_utils.o model.o
 	gcc ${FLAGS} -o $@ $^ -lm
@@ -27,7 +27,13 @@ model.o: model.c model.h
 data.o: data.c data.h
 	gcc ${FLAGS} -c $<
 
+gen_data: gen_data.o
+	gcc ${FLAGS} -o $@ $^ -lm
+
+gen_data.o: gen_data.c
+	gcc ${FLAGS} -c $<
+
 clean:
-	rm -f *.o server worker
+	rm -f *.o server worker gen_data
 
 .PHONY: all clean

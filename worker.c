@@ -188,19 +188,13 @@ int handle_done(int fd, float *weights, int num_features) {
 
 /* ========== Partner 2 implementation ========== */
 int main(int argc, char **argv) {
-    if (argc != 4) {
-        fprintf(stderr, "usage: %s <hostname> <port> <shard_file>\n", argv[0]);
+    if (argc < 3) {
+        fprintf(stderr, "usage: %s <server-host> <shard_file>\n", argv[0]);
         return 1;
     }
 
     const char *host = argv[1];
-    int port = atoi(argv[2]);
-    const char *shard_file = argv[3];
-
-    if (port <= 0) {
-        fprintf(stderr, "invalid port: %s\n", argv[2]);
-        return 1;
-    }
+    const char *shard_file = argv[2];
 
     float *X = NULL;
     float *y = NULL;
@@ -214,14 +208,14 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    int fd = connect_to_server(host, port);
+    int fd = connect_to_server(host, PORT);
     if (fd < 0) {
         free(X);
         free(y);
         return 1;
     }
 
-    fprintf(stderr, "connected to server %s:%d (fd=%d)\n", host, port, fd);
+    fprintf(stderr, "connected to server %s:%d (fd=%d)\n", host, PORT, fd);
 
     if (send_register(fd, num_features, num_samples) < 0) {
         fprintf(stderr, "failed to send register\n");
@@ -231,28 +225,82 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    fprintf(stderr, "sent register (features=%d, samples=%d), waiting for weights...\n",
-            num_features, num_samples);
+    fprintf(stderr, "sent register (samples=%d, num_features=%d), waiting...\n",
+            num_samples, num_features);
 
-    float weights[MAX_FEATURES];
-    int round = 0;
-    int nfeatures = receive_weights(fd, weights, &round, num_features, MAX_FEATURES);
-    if (nfeatures < 0) {
-        fprintf(stderr, "failed to receive weights\n");
-        close(fd);
-        free(X);
-        free(y);
+    float *weights = malloc((size_t)MAX_FEATURES * sizeof(float));
+    float *grad = malloc((size_t)MAX_FEATURES * sizeof(float));
+    if (!weights || !grad) {
+        fprintf(stderr, "allocation failure\n");
+        close(fd); free(X); free(y); free(weights); free(grad);
         return 1;
     }
 
-    fprintf(stderr, "received round %d weights from server (%d features):\n",
-            round, nfeatures);
-    for (int i = 0; i < nfeatures; ++i) {
-        fprintf(stderr, " w[%d]=%f\n", i, weights[i]);
+    while (1) {
+        uint8_t header[HEADER_SIZE];
+        if (read_all(fd, header, HEADER_SIZE) < 0) {
+            fprintf(stderr, "connection closed while waiting for header\n");
+            break;
+        }
+        uint8_t type = header[0];
+        uint32_t payload_net;
+        memcpy(&payload_net, header + 1, sizeof(uint32_t));
+        uint32_t payload = ntohl(payload_net);
+
+        if (type == MSG_WEIGHTS) {
+            if (payload < 8) {
+                fprintf(stderr, "bad weights payload size %u\n", payload);
+                if (payload > 0) {
+                    char tmp[128];
+                    read_all(fd, tmp, payload);
+                }
+                continue;
+            }
+            char buf[8 + MAX_FEATURES * sizeof(float)];
+            if (payload > sizeof(buf)) {
+                fprintf(stderr, "weights payload too large\n");
+                break;
+            }
+            if (read_all(fd, buf, payload) < 0) break;
+            int off = 0;
+            uint32_t net_round;
+            memcpy(&net_round, buf + off, 4); off += 4;
+            int round = (int)ntohl(net_round);
+            uint32_t net_nf;
+            memcpy(&net_nf, buf + off, 4); off += 4;
+            int nf = (int)ntohl(net_nf);
+            int copy_nf = (nf > num_features) ? num_features : nf;
+            memcpy(weights, buf + off, (size_t)copy_nf * sizeof(float));
+
+            fprintf(stderr, "received weights for round %d (n=%d)\n",
+                    round, nf);
+
+            float loss = compute_gradient(X, y, num_samples,
+                                          num_features, weights, grad);
+            if (send_gradient(fd, round, num_features, grad, loss) < 0) {
+                fprintf(stderr, "failed to send gradient\n");
+                break;
+            }
+            fprintf(stderr, "sent gradient for round %d (loss=%.6f)\n",
+                    round, loss);
+
+        } else if (type == MSG_DONE) {
+            handle_done(fd, weights, num_features);
+            break;
+        } else {
+            /* Unknown message: drain payload with stack buffer */
+            char drain[256];
+            uint32_t left = payload;
+            while (left > 0) {
+                uint32_t chunk = left > sizeof(drain)
+                                 ? (uint32_t)sizeof(drain) : left;
+                if (read_all(fd, drain, chunk) < 0) break;
+                left -= chunk;
+            }
+        }
     }
 
     close(fd);
-    free(X);
-    free(y);
+    free(X); free(y); free(weights); free(grad);
     return 0;
 }

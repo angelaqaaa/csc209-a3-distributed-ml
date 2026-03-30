@@ -5,7 +5,7 @@ NUM_FEATURES="${NUM_FEATURES:-10}"
 SCENARIOS="${SCENARIOS:-1 2 3}"
 SERVER_HOST="${SERVER_HOST:-localhost}"
 SERVER_WAIT_SECS="${SERVER_WAIT_SECS:-1}"
-ROUND_WAIT_SECS="${ROUND_WAIT_SECS:-8}"
+ROUND_WAIT_SECS="${ROUND_WAIT_SECS:-20}"
 TEST_PORT="${TEST_PORT:-4343}"
 
 SERVER_PID=""
@@ -15,6 +15,10 @@ cleanup() {
   for pid in "${WORKER_PIDS[@]:-}"; do
     if kill -0 "$pid" 2>/dev/null; then
       kill "$pid" 2>/dev/null || true
+      sleep 1
+      if kill -0 "$pid" 2>/dev/null; then
+        kill -9 "$pid" 2>/dev/null || true
+      fi
       wait "$pid" 2>/dev/null || true
     fi
   done
@@ -22,6 +26,10 @@ cleanup() {
 
   if [[ -n "${SERVER_PID:-}" ]] && kill -0 "$SERVER_PID" 2>/dev/null; then
     kill "$SERVER_PID" 2>/dev/null || true
+    sleep 1
+    if kill -0 "$SERVER_PID" 2>/dev/null; then
+      kill -9 "$SERVER_PID" 2>/dev/null || true
+    fi
     wait "$SERVER_PID" 2>/dev/null || true
   fi
   SERVER_PID=""

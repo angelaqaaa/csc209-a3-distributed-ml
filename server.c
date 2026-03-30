@@ -14,7 +14,6 @@
 /* ========== CONNECTION MANAGEMENT (Partner 2) ========== */
 static struct worker_info workers[MAX_WORKERS];
 static float global_weights[MAX_FEATURES];
-static int current_round = 0;
 void handle_disconnect(int idx);
 
 /*
@@ -325,11 +324,6 @@ void handle_register(int idx, int *num_features) {
 
     fprintf(stderr, "worker %d registered (features=%d, samples=%d)\n",
             idx, worker_nf, worker_ns);
-
-    if (send_weights_to_worker(idx, current_round, *num_features) < 0) {
-        fprintf(stderr, "failed to send initial weights to worker %d\n", idx);
-        handle_disconnect(idx);
-    }
 }
 
 
@@ -340,7 +334,7 @@ void handle_register(int idx, int *num_features) {
  * After processing the message the function removes the processed bytes
  * from the worker's buffer so subsequent messages remain.
  */
-void dispatch_message(int idx, int *num_features) {
+void dispatch_message(int idx, int *num_features, int current_round) {
     struct worker_info *w = &workers[idx];
     if (w->recv_len < HEADER_SIZE) return;
 
@@ -358,7 +352,9 @@ void dispatch_message(int idx, int *num_features) {
             handle_register(idx, num_features);
         }
     } else if (type == MSG_GRADIENT) {
-        handle_gradient(w, current_round);
+        if (handle_gradient(w, current_round) < 0) {
+            fprintf(stderr, "bad gradient from worker %d\n", idx);
+        }
     } else if (type == MSG_DONE) {
         fprintf(stderr, "worker %d sent DONE\n", idx);
     } else {
@@ -375,12 +371,20 @@ void dispatch_message(int idx, int *num_features) {
 
 
 int main(int argc, char **argv) {
-    (void)argc;
-    (void)argv;
-
     int port = PORT;
     int listen_fd;
-    int num_features = MAX_FEATURES; /* default; partner1 may use fewer */
+    int num_features = MAX_FEATURES; /* default; learned from workers */
+    int current_round = 0;
+    int expected_workers = 1;
+    int weights_broadcast = 0;
+
+    if (argc >= 2) {
+        expected_workers = atoi(argv[1]);
+        if (expected_workers <= 0) expected_workers = 1;
+    }
+
+    fprintf(stderr, "server starting: PORT=%d expected_workers=%d\n",
+            port, expected_workers);
 
     fd_set allset;
     fd_set rset;
@@ -472,8 +476,54 @@ int main(int argc, char **argv) {
                             break;
                         }
 
-                        dispatch_message(i, &num_features);
+                        dispatch_message(i, &num_features, current_round);
                     }
+                }
+            }
+        }
+
+        /* Training orchestration */
+        int registered_count = 0;
+        for (int i = 0; i < MAX_WORKERS; ++i) {
+            if (workers[i].fd != -1 && workers[i].state >= 1)
+                registered_count++;
+        }
+
+        if (!weights_broadcast && registered_count >= expected_workers) {
+            if (broadcast_weights(current_round, num_features) < 0) {
+                fprintf(stderr, "broadcast initial weights failed\n");
+            } else {
+                weights_broadcast = 1;
+                fprintf(stderr,
+                        "broadcasted initial weights for round %d\n",
+                        current_round);
+            }
+        }
+
+        if (weights_broadcast) {
+            if (all_gradients_received(workers)) {
+                float global_loss = 0.0f;
+                aggregate_and_update(global_weights, workers,
+                                     num_features, LEARNING_RATE,
+                                     &global_loss);
+                fprintf(stderr, "aggregated gradients; global_loss=%.6f\n",
+                        global_loss);
+                if (check_termination(global_loss, current_round,
+                                      MAX_ROUNDS)) {
+                    broadcast_done(workers, global_weights,
+                                   num_features, global_loss);
+                    fprintf(stderr,
+                            "training complete; broadcasting DONE\n");
+                    break;
+                }
+                current_round++;
+                if (broadcast_weights(current_round, num_features) < 0) {
+                    fprintf(stderr,
+                            "broadcast weights for round %d failed\n",
+                            current_round);
+                } else {
+                    fprintf(stderr, "broadcasted weights for round %d\n",
+                            current_round);
                 }
             }
         }
