@@ -109,14 +109,6 @@ int receive_weights(int fd, float *weights_out, int *round_out,
 /* ========== GRADIENT + DONE (Partner 1) ========== */
 
 /*
- * Ignore SIGPIPE so writes to a closed socket return EPIPE
- * instead of killing the process. Called from main() at startup.
- */
-static void setup_worker_signals(void) {
-    signal(SIGPIPE, SIG_IGN);
-}
-
-/*
  * Serialize and send MSG_GRADIENT to the server.
  * Payload: round(u32) + num_features(u32) + loss(float) + gradients[n].
  * Returns 0 on success, -1 on error.
