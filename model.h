@@ -1,7 +1,7 @@
 #ifndef MODEL_H
 #define MODEL_H
 
-/* Partner 1 implements */
+/* ML model functions: gradient computation, weight updates */
 
 float sigmoid(float x);
 
