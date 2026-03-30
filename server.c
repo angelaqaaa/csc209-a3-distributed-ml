@@ -500,6 +500,11 @@ int main(int argc, char **argv) {
             }
         }
 
+        if (weights_broadcast && count_active_workers(workers) == 0) {
+            fprintf(stderr, "all workers disconnected; exiting\n");
+            break;
+        }
+
         if (weights_broadcast) {
             if (all_gradients_received(workers)) {
                 float global_loss = 0.0f;
@@ -529,6 +534,11 @@ int main(int argc, char **argv) {
         }
     }
 
+    for (int i = 0; i < MAX_WORKERS; i++) {
+        if (workers[i].fd != -1) {
+            close(workers[i].fd);
+        }
+    }
     close(listen_fd);
     return 0;
 }

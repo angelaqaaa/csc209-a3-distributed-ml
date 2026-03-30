@@ -1,6 +1,5 @@
 #include <math.h>
 #include <string.h>
-#include <stdlib.h>
 #include "model.h"
 
 float sigmoid(float x) {
