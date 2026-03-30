@@ -8,11 +8,11 @@ io_utils.o: io_utils.c io_utils.h protocol.h
 model.o: model.c model.h
 	gcc ${FLAGS} -c model.c
 
-server_funcs.o: server.c protocol.h io_utils.h model.h
-	gcc ${FLAGS} -c server.c -o server_funcs.o
+server_funcs.o: server.c protocol.h io_utils.h model.h net_utils.h
+	gcc ${FLAGS} -Dmain=server_main -c server.c -o server_funcs.o
 
-worker_funcs.o: worker.c protocol.h io_utils.h model.h
-	gcc ${FLAGS} -Wno-unused-function -c worker.c -o worker_funcs.o
+worker_funcs.o: worker.c protocol.h io_utils.h model.h data.h
+	gcc ${FLAGS} -Dmain=worker_main -Wno-unused-function -c worker.c -o worker_funcs.o
 
 test_io_utils: test_io_utils.c io_utils.o
 	gcc ${FLAGS} -o test_io_utils test_io_utils.c io_utils.o
@@ -20,11 +20,17 @@ test_io_utils: test_io_utils.c io_utils.o
 test_model: test_model.c model.o
 	gcc ${FLAGS} -o test_model test_model.c model.o -lm
 
-test_server: test_server.c server_funcs.o io_utils.o model.o
-	gcc ${FLAGS} -o test_server test_server.c server_funcs.o io_utils.o model.o -lm
+net_utils.o: net_utils.c net_utils.h
+	gcc ${FLAGS} -c net_utils.c
 
-test_worker: test_worker.c worker_funcs.o server_funcs.o io_utils.o model.o
-	gcc ${FLAGS} -o test_worker test_worker.c worker_funcs.o server_funcs.o io_utils.o model.o -lm
+data.o: data.c data.h
+	gcc ${FLAGS} -c data.c
+
+test_server: test_server.c server_funcs.o io_utils.o model.o net_utils.o
+	gcc ${FLAGS} -o test_server test_server.c server_funcs.o io_utils.o model.o net_utils.o -lm
+
+test_worker: test_worker.c worker_funcs.o server_funcs.o io_utils.o model.o net_utils.o data.o
+	gcc ${FLAGS} -o test_worker test_worker.c worker_funcs.o server_funcs.o io_utils.o model.o net_utils.o data.o -lm
 
 test_all: test_io_utils test_model test_server test_worker
 	@echo "=== Running all tests ==="
@@ -41,4 +47,4 @@ test_all: test_io_utils test_model test_server test_worker
 
 clean:
 	rm -f test_io_utils test_model test_server test_worker
-	rm -f io_utils.o model.o server_funcs.o worker_funcs.o
+	rm -f io_utils.o model.o server_funcs.o worker_funcs.o net_utils.o data.o
