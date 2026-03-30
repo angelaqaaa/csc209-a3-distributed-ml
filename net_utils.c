@@ -64,36 +64,40 @@ int accept_connection(int server_fd) {
 
 
 int connect_to_server(const char *host, int port) {
-	int sockfd = socket(AF_INET, SOCK_STREAM, 0);
-	if (sockfd < 0) {
-		perror("socket");
-		return -1;
-	}
+    int sockfd = socket(AF_INET, SOCK_STREAM, 0);
+    if (sockfd < 0) {
+        perror("socket");
+        return -1;
+    }
 
-	struct sockaddr_in serv_addr;
-	memset(&serv_addr, 0, sizeof(serv_addr));
-	serv_addr.sin_family = AF_INET;
-	serv_addr.sin_port = htons(port);
+    struct sockaddr_in serv_addr;
+    memset(&serv_addr, 0, sizeof(serv_addr));
+    serv_addr.sin_family = AF_INET;
+    serv_addr.sin_port = htons(port);
 
-	if (inet_pton(AF_INET, host, &serv_addr.sin_addr) <= 0) {
-		/* Not a numeric IP -- try DNS lookup as a fallback */
-		struct hostent *h = gethostbyname(host);
-		if (h && h->h_addr_list && h->h_addr_list[0]) {
-			memcpy(&serv_addr.sin_addr.s_addr, h->h_addr_list[0], h->h_length);
-		} else if (strcmp(host, "localhost") == 0) {
-			serv_addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-		} else {
-			fprintf(stderr, "invalid host/address or DNS lookup failed: %s\n", host);
-			close(sockfd);
-			return -1;
-		}
-	}
+    if (inet_pton(AF_INET, host, &serv_addr.sin_addr) <= 0) {
+        /* Not a numeric IP -- try DNS lookup as a fallback */
+        struct hostent *h = gethostbyname(host);
+        if (h && h->h_addr_list && h->h_addr_list[0]) {
+            memcpy(&serv_addr.sin_addr.s_addr, h->h_addr_list[0],
+                   h->h_length);
+        } else if (strcmp(host, "localhost") == 0) {
+            serv_addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+        } else {
+            fprintf(stderr,
+                    "invalid host/address or DNS lookup failed: %s\n",
+                    host);
+            close(sockfd);
+            return -1;
+        }
+    }
 
-	if (connect(sockfd, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0) {
-		perror("connect");
-		close(sockfd);
-		return -1;
-	}
+    if (connect(sockfd, (struct sockaddr *)&serv_addr,
+                sizeof(serv_addr)) < 0) {
+        perror("connect");
+        close(sockfd);
+        return -1;
+    }
 
-	return sockfd;
+    return sockfd;
 }
