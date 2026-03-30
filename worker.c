@@ -31,36 +31,30 @@ static void setup_worker_signals(void) {
  */
 int send_gradient(int fd, int round, int num_features,
                   float *gradients, float loss) {
-    char buf[HEADER_SIZE + 12 + MAX_FEATURES * sizeof(float)];
+    char payload[12 + MAX_FEATURES * sizeof(float)];
+    uint32_t payload_len = 12 + num_features * sizeof(float);
     int offset = 0;
-
-    /* Header */
-    buf[offset] = MSG_GRADIENT;
-    offset += 1;
-
-    uint32_t payload_size = htonl(12 + num_features * sizeof(float));
-    memcpy(buf + offset, &payload_size, 4);
-    offset += 4;
 
     /* Payload: round */
     uint32_t net_round = htonl(round);
-    memcpy(buf + offset, &net_round, 4);
+    memcpy(payload + offset, &net_round, 4);
     offset += 4;
 
     /* Payload: num_features */
     uint32_t net_nf = htonl(num_features);
-    memcpy(buf + offset, &net_nf, 4);
+    memcpy(payload + offset, &net_nf, 4);
     offset += 4;
 
     /* Payload: loss */
-    memcpy(buf + offset, &loss, sizeof(float));
+    memcpy(payload + offset, &loss, sizeof(float));
     offset += sizeof(float);
 
     /* Payload: gradients array */
-    memcpy(buf + offset, gradients, num_features * sizeof(float));
-    offset += num_features * sizeof(float);
+    memcpy(payload + offset, gradients, num_features * sizeof(float));
 
-    if (write_all(fd, buf, offset) == -1) {
+    /* Send header then payload */
+    if (send_header(fd, MSG_GRADIENT, payload_len) == -1
+            || write_all(fd, payload, payload_len) == -1) {
         fprintf(stderr, "send_gradient: write failed\n");
         return -1;
     }
