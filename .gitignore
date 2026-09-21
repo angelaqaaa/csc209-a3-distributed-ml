@@ -9,3 +9,4 @@ test_worker
 shard_*.csv
 .DS_Store
 docs/
+*.log
