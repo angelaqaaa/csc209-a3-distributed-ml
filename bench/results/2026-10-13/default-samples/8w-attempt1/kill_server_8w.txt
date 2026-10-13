@@ -1,0 +1,222 @@
+1791882976.844898 server starting: PORT=4545 expected_workers=8
+1791882976.844955 server listening on port 4545
+1791882977.001395 accepted connection fd=4 assigned idx=0
+1791882977.001450 worker 0 registered (features=64, samples=20000)
+1791882977.092059 accepted connection fd=5 assigned idx=1
+1791882977.092942 worker 1 registered (features=64, samples=20000)
+1791882977.180267 accepted connection fd=6 assigned idx=2
+1791882977.180306 worker 2 registered (features=64, samples=20000)
+1791882977.271344 accepted connection fd=7 assigned idx=3
+1791882977.271399 worker 3 registered (features=64, samples=20000)
+1791882977.378418 accepted connection fd=8 assigned idx=4
+1791882977.378489 worker 4 registered (features=64, samples=20000)
+1791882977.461323 accepted connection fd=9 assigned idx=5
+1791882977.461368 worker 5 registered (features=64, samples=20000)
+1791882977.583587 accepted connection fd=10 assigned idx=6
+1791882977.583664 worker 6 registered (features=64, samples=20000)
+1791882977.678065 accepted connection fd=11 assigned idx=7
+1791882977.678126 worker 7 registered (features=64, samples=20000)
+1791882977.678163 broadcasted initial weights for round 0
+1791882977.689774 aggregated gradients; global_loss=0.693291
+1791882977.689803 broadcasted weights for round 1
+1791882977.702564 aggregated gradients; global_loss=0.692621
+1791882977.702607 broadcasted weights for round 2
+1791882977.713956 aggregated gradients; global_loss=0.692088
+1791882977.713982 broadcasted weights for round 3
+1791882977.725492 aggregated gradients; global_loss=0.691561
+1791882977.725514 broadcasted weights for round 4
+1791882977.745264 aggregated gradients; global_loss=0.691032
+1791882977.745297 broadcasted weights for round 5
+1791882977.760081 aggregated gradients; global_loss=0.690504
+1791882977.760107 broadcasted weights for round 6
+1791882977.772875 aggregated gradients; global_loss=0.689979
+1791882977.772906 broadcasted weights for round 7
+1791882977.787347 aggregated gradients; global_loss=0.689452
+1791882977.787378 broadcasted weights for round 8
+1791882977.799203 aggregated gradients; global_loss=0.688928
+1791882977.799246 broadcasted weights for round 9
+1791882977.816413 aggregated gradients; global_loss=0.688404
+1791882977.816502 broadcasted weights for round 10
+1791882977.829731 aggregated gradients; global_loss=0.687882
+1791882977.829759 broadcasted weights for round 11
+1791882977.841516 aggregated gradients; global_loss=0.687361
+1791882977.841562 broadcasted weights for round 12
+1791882977.856657 aggregated gradients; global_loss=0.686840
+1791882977.856691 broadcasted weights for round 13
+1791882977.862602 worker 2 disconnected
+1791882977.868858 aggregated gradients; global_loss=0.686318
+1791882977.868878 broadcasted weights for round 14
+1791882977.879278 aggregated gradients; global_loss=0.685797
+1791882977.879301 broadcasted weights for round 15
+1791882977.890912 aggregated gradients; global_loss=0.685279
+1791882977.890946 broadcasted weights for round 16
+1791882977.901623 aggregated gradients; global_loss=0.684762
+1791882977.901646 broadcasted weights for round 17
+1791882977.913754 aggregated gradients; global_loss=0.684245
+1791882977.913775 broadcasted weights for round 18
+1791882977.926668 aggregated gradients; global_loss=0.683729
+1791882977.926693 broadcasted weights for round 19
+1791882977.938664 aggregated gradients; global_loss=0.683214
+1791882977.938703 broadcasted weights for round 20
+1791882977.949179 aggregated gradients; global_loss=0.682698
+1791882977.949204 broadcasted weights for round 21
+1791882977.959784 aggregated gradients; global_loss=0.682185
+1791882977.959805 broadcasted weights for round 22
+1791882977.971268 aggregated gradients; global_loss=0.681674
+1791882977.971291 broadcasted weights for round 23
+1791882977.982547 aggregated gradients; global_loss=0.681162
+1791882977.982564 broadcasted weights for round 24
+1791882977.995636 aggregated gradients; global_loss=0.680650
+1791882977.995658 broadcasted weights for round 25
+1791882978.010037 aggregated gradients; global_loss=0.680139
+1791882978.010081 broadcasted weights for round 26
+1791882978.024915 aggregated gradients; global_loss=0.679630
+1791882978.024949 broadcasted weights for round 27
+1791882978.039684 aggregated gradients; global_loss=0.679122
+1791882978.039708 broadcasted weights for round 28
+1791882978.053065 aggregated gradients; global_loss=0.678615
+1791882978.053087 broadcasted weights for round 29
+1791882978.069684 aggregated gradients; global_loss=0.678109
+1791882978.069708 broadcasted weights for round 30
+1791882978.080676 aggregated gradients; global_loss=0.677602
+1791882978.080712 broadcasted weights for round 31
+1791882978.091641 aggregated gradients; global_loss=0.677097
+1791882978.091665 broadcasted weights for round 32
+1791882978.103056 aggregated gradients; global_loss=0.676594
+1791882978.103084 broadcasted weights for round 33
+1791882978.113874 aggregated gradients; global_loss=0.676090
+1791882978.113897 broadcasted weights for round 34
+1791882978.125260 aggregated gradients; global_loss=0.675587
+1791882978.125287 broadcasted weights for round 35
+1791882978.135992 aggregated gradients; global_loss=0.675086
+1791882978.136018 broadcasted weights for round 36
+1791882978.147110 aggregated gradients; global_loss=0.674585
+1791882978.147139 broadcasted weights for round 37
+1791882978.157908 aggregated gradients; global_loss=0.674086
+1791882978.157937 broadcasted weights for round 38
+1791882978.168875 aggregated gradients; global_loss=0.673585
+1791882978.168898 broadcasted weights for round 39
+1791882978.179224 aggregated gradients; global_loss=0.673087
+1791882978.179292 broadcasted weights for round 40
+1791882978.191226 aggregated gradients; global_loss=0.672590
+1791882978.191250 broadcasted weights for round 41
+1791882978.202182 aggregated gradients; global_loss=0.672093
+1791882978.202211 broadcasted weights for round 42
+1791882978.212960 aggregated gradients; global_loss=0.671598
+1791882978.212985 broadcasted weights for round 43
+1791882978.224641 aggregated gradients; global_loss=0.671102
+1791882978.224711 broadcasted weights for round 44
+1791882978.238190 aggregated gradients; global_loss=0.670608
+1791882978.238208 broadcasted weights for round 45
+1791882978.257781 aggregated gradients; global_loss=0.670114
+1791882978.257807 broadcasted weights for round 46
+1791882978.268443 aggregated gradients; global_loss=0.669621
+1791882978.268470 broadcasted weights for round 47
+1791882978.283052 aggregated gradients; global_loss=0.669131
+1791882978.283085 broadcasted weights for round 48
+1791882978.294573 aggregated gradients; global_loss=0.668639
+1791882978.294601 broadcasted weights for round 49
+1791882978.306155 aggregated gradients; global_loss=0.668151
+1791882978.306179 broadcasted weights for round 50
+1791882978.316957 aggregated gradients; global_loss=0.667660
+1791882978.316985 broadcasted weights for round 51
+1791882978.327679 aggregated gradients; global_loss=0.667172
+1791882978.327704 broadcasted weights for round 52
+1791882978.342142 aggregated gradients; global_loss=0.666684
+1791882978.342167 broadcasted weights for round 53
+1791882978.353058 aggregated gradients; global_loss=0.666197
+1791882978.353084 broadcasted weights for round 54
+1791882978.364104 aggregated gradients; global_loss=0.665711
+1791882978.364130 broadcasted weights for round 55
+1791882978.374570 aggregated gradients; global_loss=0.665226
+1791882978.374596 broadcasted weights for round 56
+1791882978.386867 aggregated gradients; global_loss=0.664741
+1791882978.386904 broadcasted weights for round 57
+1791882978.400053 aggregated gradients; global_loss=0.664258
+1791882978.400082 broadcasted weights for round 58
+1791882978.410792 aggregated gradients; global_loss=0.663775
+1791882978.410821 broadcasted weights for round 59
+1791882978.425015 aggregated gradients; global_loss=0.663293
+1791882978.425042 broadcasted weights for round 60
+1791882978.436100 aggregated gradients; global_loss=0.662812
+1791882978.436127 broadcasted weights for round 61
+1791882978.446633 aggregated gradients; global_loss=0.662331
+1791882978.446660 broadcasted weights for round 62
+1791882978.458185 aggregated gradients; global_loss=0.661851
+1791882978.458208 broadcasted weights for round 63
+1791882978.468960 aggregated gradients; global_loss=0.661372
+1791882978.468987 broadcasted weights for round 64
+1791882978.479707 aggregated gradients; global_loss=0.660895
+1791882978.479732 broadcasted weights for round 65
+1791882978.493336 aggregated gradients; global_loss=0.660418
+1791882978.493360 broadcasted weights for round 66
+1791882978.505772 aggregated gradients; global_loss=0.659941
+1791882978.505793 broadcasted weights for round 67
+1791882978.517021 aggregated gradients; global_loss=0.659465
+1791882978.517046 broadcasted weights for round 68
+1791882978.529940 aggregated gradients; global_loss=0.658990
+1791882978.529962 broadcasted weights for round 69
+1791882978.546726 aggregated gradients; global_loss=0.658516
+1791882978.546768 broadcasted weights for round 70
+1791882978.947343 aggregated gradients; global_loss=0.658043
+1791882978.947571 broadcasted weights for round 71
+1791882979.031579 aggregated gradients; global_loss=0.657570
+1791882979.031605 broadcasted weights for round 72
+1791882979.142639 aggregated gradients; global_loss=0.657098
+1791882979.142900 broadcasted weights for round 73
+1791882979.240620 aggregated gradients; global_loss=0.656626
+1791882979.240714 broadcasted weights for round 74
+1791882979.275072 aggregated gradients; global_loss=0.656157
+1791882979.275110 broadcasted weights for round 75
+1791882979.297796 aggregated gradients; global_loss=0.655688
+1791882979.301492 broadcasted weights for round 76
+1791882979.321521 aggregated gradients; global_loss=0.655218
+1791882979.321601 broadcasted weights for round 77
+1791882979.343085 aggregated gradients; global_loss=0.654750
+1791882979.343536 broadcasted weights for round 78
+1791882979.371824 aggregated gradients; global_loss=0.654283
+1791882979.371893 broadcasted weights for round 79
+1791882979.387194 aggregated gradients; global_loss=0.653817
+1791882979.387219 broadcasted weights for round 80
+1791882979.403569 aggregated gradients; global_loss=0.653352
+1791882979.403636 broadcasted weights for round 81
+1791882979.424797 aggregated gradients; global_loss=0.652887
+1791882979.424971 broadcasted weights for round 82
+1791882979.457649 aggregated gradients; global_loss=0.652422
+1791882979.457674 broadcasted weights for round 83
+1791882979.479882 aggregated gradients; global_loss=0.651958
+1791882979.479903 broadcasted weights for round 84
+1791882979.490627 aggregated gradients; global_loss=0.651497
+1791882979.490659 broadcasted weights for round 85
+1791882979.503599 aggregated gradients; global_loss=0.651036
+1791882979.503649 broadcasted weights for round 86
+1791882979.517579 aggregated gradients; global_loss=0.650574
+1791882979.517598 broadcasted weights for round 87
+1791882979.530302 aggregated gradients; global_loss=0.650114
+1791882979.530343 broadcasted weights for round 88
+1791882979.546792 aggregated gradients; global_loss=0.649654
+1791882979.546816 broadcasted weights for round 89
+1791882979.559146 aggregated gradients; global_loss=0.649196
+1791882979.559176 broadcasted weights for round 90
+1791882979.571055 aggregated gradients; global_loss=0.648737
+1791882979.571086 broadcasted weights for round 91
+1791882979.583131 aggregated gradients; global_loss=0.648281
+1791882979.583165 broadcasted weights for round 92
+1791882979.594328 aggregated gradients; global_loss=0.647825
+1791882979.594351 broadcasted weights for round 93
+1791882979.605058 aggregated gradients; global_loss=0.647369
+1791882979.605087 broadcasted weights for round 94
+1791882979.615598 aggregated gradients; global_loss=0.646913
+1791882979.615625 broadcasted weights for round 95
+1791882979.626235 aggregated gradients; global_loss=0.646459
+1791882979.626263 broadcasted weights for round 96
+1791882979.640666 aggregated gradients; global_loss=0.646005
+1791882979.640721 broadcasted weights for round 97
+1791882979.652315 aggregated gradients; global_loss=0.645554
+1791882979.652340 broadcasted weights for round 98
+1791882979.663140 aggregated gradients; global_loss=0.645101
+1791882979.663156 broadcasted weights for round 99
+1791882979.674011 aggregated gradients; global_loss=0.644650
+1791882979.674025 broadcasted weights for round 100
+1791882979.684671 aggregated gradients; global_loss=0.644199
+1791882979.684705 training complete; broadcasting DONE

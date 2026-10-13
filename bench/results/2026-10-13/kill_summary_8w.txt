@@ -1,0 +1,61 @@
+worker-kill run (bench/kill_worker.sh)
+date: 2026-10-13 05:19:06 EDT
+commit: acafcc5 (C sources and Makefile unchanged)
+script: bench/kill_worker.sh, git blob b9ce0c229a56fe3a844fc80cda20548ab5b19ae8
+host: Darwin 27.0.0 arm64, Apple M2, 8 cores
+load average before the build: 3.38 4.95 5.88
+compiler: Apple clang version 21.0.0 (clang-2100.3.34.2)
+build: make clean && make PORT=4545
+  gcc -Wall -Wextra -g -DPORT=4545 -c server.c
+  gcc -Wall -Wextra -g -DPORT=4545 -c net_utils.c
+  gcc -Wall -Wextra -g -DPORT=4545 -c io_utils.c
+  gcc -Wall -Wextra -g -DPORT=4545 -c model.c
+  gcc -Wall -Wextra -g -DPORT=4545 -o server server.o net_utils.o io_utils.o model.o -lm
+  gcc -Wall -Wextra -g -DPORT=4545 -c worker.c
+  gcc -Wall -Wextra -g -DPORT=4545 -c data.c
+  gcc -Wall -Wextra -g -DPORT=4545 -o worker worker.o net_utils.o io_utils.o model.o data.o -lm
+  gcc -Wall -Wextra -g -DPORT=4545 -c gen_data.c
+  gcc -Wall -Wextra -g -DPORT=4545 -o gen_data gen_data.o -lm
+  build warnings: 3
+    gen_data.c:36:33: warning: implicit conversion from 'int' to 'float' changes value from 2147483647 to 2147483648 [-Wimplicit-const-int-float-conversion]
+    gen_data.c:59:44: warning: implicit conversion from 'int' to 'float' changes value from 2147483647 to 2147483648 [-Wimplicit-const-int-float-conversion]
+    gen_data.c:66:45: warning: implicit conversion from 'int' to 'float' changes value from 2147483647 to 2147483648 [-Wimplicit-const-int-float-conversion]
+data: ./gen_data 64 640000 8 (run in a temporary directory, deleted at exit)
+  shard_0.csv: 80000 lines, 48799063 bytes
+  shard_1.csv: 80000 lines, 48798763 bytes
+  shard_2.csv: 80000 lines, 48800296 bytes
+  shard_3.csv: 80000 lines, 48799609 bytes
+  shard_4.csv: 80000 lines, 48800585 bytes
+  shard_5.csv: 80000 lines, 48798761 bytes
+  shard_6.csv: 80000 lines, 48800102 bytes
+  shard_7.csv: 80000 lines, 48799604 bytes
+server: ./server 8 (pid 70075), output timestamped into kill_server_8w.txt
+workers (each started after the previous one registered):
+  slot 0: pid 70084, shard_0.csv, log kill_worker_8w_slot0.txt
+  slot 1: pid 70117, shard_1.csv, log kill_worker_8w_slot1.txt
+  slot 2: pid 70142, shard_2.csv, log kill_worker_8w_slot2.txt
+  slot 3: pid 70165, shard_3.csv, log kill_worker_8w_slot3.txt
+  slot 4: pid 70188, shard_4.csv, log kill_worker_8w_slot4.txt
+  slot 5: pid 70211, shard_5.csv, log kill_worker_8w_slot5.txt
+  slot 6: pid 70244, shard_6.csv, log kill_worker_8w_slot6.txt
+  slot 7: pid 70269, shard_7.csv, log kill_worker_8w_slot7.txt
+kill: SIGKILL to slot 2 (pid 70142) after the script saw "broadcasted weights for round 10"; kill time 1791883158.221329, read just before kill -9
+checks:
+  PASS slot map: accepted idx [0 1 2 3 4 5 6 7], registered [0 1 2 3 4 5 6 7], launch order [0 1 2 3 4 5 6 7]
+  PASS (a) "broadcasted weights for round 10" logged at 1791883158.179296, kill time 1791883158.221329 (read just before kill -9), DONE logged at 1791883161.952146
+  PASS (b) "worker 2 disconnected" lines: 1, first one logged at 1791883158.225075, kill time 1791883158.221329
+  PASS "worker <i> disconnected" lines for the other slots: 0
+  PASS (c) aggregations after the disconnect line: 90; the last aggregation before it: round 10 (the first aggregation is round 0)
+  PASS (d) server logged "training complete; broadcasting DONE" 1 time(s), exit status 0
+  PASS (e) slot 0: "Training complete. Final loss:" found in kill_worker_8w_slot0.txt, exit status 0
+  PASS (e) slot 1: "Training complete. Final loss:" found in kill_worker_8w_slot1.txt, exit status 0
+  PASS (e) slot 3: "Training complete. Final loss:" found in kill_worker_8w_slot3.txt, exit status 0
+  PASS (e) slot 4: "Training complete. Final loss:" found in kill_worker_8w_slot4.txt, exit status 0
+  PASS (e) slot 5: "Training complete. Final loss:" found in kill_worker_8w_slot5.txt, exit status 0
+  PASS (e) slot 6: "Training complete. Final loss:" found in kill_worker_8w_slot6.txt, exit status 0
+  PASS (e) slot 7: "Training complete. Final loss:" found in kill_worker_8w_slot7.txt, exit status 0
+  PASS (f) slot 2: last "sent gradient for round" 10 (at most 11)
+  PASS slot 2: last "received weights for round" 10 (at least 9)
+  PASS slot 2 exit status 137 (137 = 128 + 9, SIGKILL)
+rounds: 101 "aggregated gradients" lines (rounds 0 to 100, the MAX_ROUNDS cap)
+result: all checks passed
