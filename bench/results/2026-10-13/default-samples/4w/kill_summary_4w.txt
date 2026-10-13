@@ -1,0 +1,49 @@
+worker-kill run (bench/kill_worker.sh)
+date: 2026-10-13 05:15:58 EDT
+commit: acafcc5 (C sources and Makefile unchanged)
+script: bench/kill_worker.sh, git blob b9ce0c229a56fe3a844fc80cda20548ab5b19ae8
+host: Darwin 27.0.0 arm64, Apple M2, 8 cores
+load average before the build: 3.54 6.53 6.57
+compiler: Apple clang version 21.0.0 (clang-2100.3.34.2)
+build: make clean && make PORT=4545
+  gcc -Wall -Wextra -g -DPORT=4545 -c server.c
+  gcc -Wall -Wextra -g -DPORT=4545 -c net_utils.c
+  gcc -Wall -Wextra -g -DPORT=4545 -c io_utils.c
+  gcc -Wall -Wextra -g -DPORT=4545 -c model.c
+  gcc -Wall -Wextra -g -DPORT=4545 -o server server.o net_utils.o io_utils.o model.o -lm
+  gcc -Wall -Wextra -g -DPORT=4545 -c worker.c
+  gcc -Wall -Wextra -g -DPORT=4545 -c data.c
+  gcc -Wall -Wextra -g -DPORT=4545 -o worker worker.o net_utils.o io_utils.o model.o data.o -lm
+  gcc -Wall -Wextra -g -DPORT=4545 -c gen_data.c
+  gcc -Wall -Wextra -g -DPORT=4545 -o gen_data gen_data.o -lm
+  build warnings: 3
+    gen_data.c:36:33: warning: implicit conversion from 'int' to 'float' changes value from 2147483647 to 2147483648 [-Wimplicit-const-int-float-conversion]
+    gen_data.c:59:44: warning: implicit conversion from 'int' to 'float' changes value from 2147483647 to 2147483648 [-Wimplicit-const-int-float-conversion]
+    gen_data.c:66:45: warning: implicit conversion from 'int' to 'float' changes value from 2147483647 to 2147483648 [-Wimplicit-const-int-float-conversion]
+data: ./gen_data 64 160000 4 (run in a temporary directory, deleted at exit)
+  shard_0.csv: 40000 lines, 24401766 bytes
+  shard_1.csv: 40000 lines, 24399922 bytes
+  shard_2.csv: 40000 lines, 24397990 bytes
+  shard_3.csv: 40000 lines, 24400946 bytes
+server: ./server 4 (pid 66369), output timestamped into kill_server_4w.txt
+workers (each started after the previous one registered):
+  slot 0: pid 66378, shard_0.csv, log kill_worker_4w_slot0.txt
+  slot 1: pid 66395, shard_1.csv, log kill_worker_4w_slot1.txt
+  slot 2: pid 66408, shard_2.csv, log kill_worker_4w_slot2.txt
+  slot 3: pid 66421, shard_3.csv, log kill_worker_4w_slot3.txt
+kill: SIGKILL to slot 2 (pid 66408) after the script saw "broadcasted weights for round 10"; kill time 1791882962.407873, read just before kill -9
+checks:
+  PASS slot map: accepted idx [0 1 2 3], registered [0 1 2 3], launch order [0 1 2 3]
+  PASS (a) "broadcasted weights for round 10" logged at 1791882962.371690, kill time 1791882962.407873 (read just before kill -9), DONE logged at 1791882963.722107
+  PASS (b) "worker 2 disconnected" lines: 1, first one logged at 1791882962.409205, kill time 1791882962.407873
+  PASS "worker <i> disconnected" lines for the other slots: 0
+  PASS (c) aggregations after the disconnect line: 89; the last aggregation before it: round 11 (the first aggregation is round 0)
+  PASS (d) server logged "training complete; broadcasting DONE" 1 time(s), exit status 0
+  PASS (e) slot 0: "Training complete. Final loss:" found in kill_worker_4w_slot0.txt, exit status 0
+  PASS (e) slot 1: "Training complete. Final loss:" found in kill_worker_4w_slot1.txt, exit status 0
+  PASS (e) slot 3: "Training complete. Final loss:" found in kill_worker_4w_slot3.txt, exit status 0
+  PASS (f) slot 2: last "sent gradient for round" 11 (at most 11)
+  PASS slot 2: last "received weights for round" 12 (at least 9)
+  PASS slot 2 exit status 137 (137 = 128 + 9, SIGKILL)
+rounds: 101 "aggregated gradients" lines (rounds 0 to 100, the MAX_ROUNDS cap)
+result: all checks passed
